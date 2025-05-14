@@ -130,7 +130,7 @@ const Dashboard = () => {
             {card.icon}
             <div>
               <p className="text-sm text-gray-500">{card.title}</p>
-              <h3 className="text-xl font-bold text-gray-800">{card.value}</h3>
+              <h3 className="text-md font-bold text-gray-800">{card.value}</h3>
             </div>
           </div>
         ))}
