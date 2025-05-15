@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../firebase/Firebase';
+import React, { useState, useEffect, useRef } from 'react';
+import { FaEdit } from 'react-icons/fa';
+import { db } from '../firebase/Firebase'; // Adjust path if needed
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useNavigate, useParams } from 'react-router-dom';
 
 const EditBlogs = () => {
-  const { id } = useParams();
+  const { id } = useParams(); // blog doc id from route params
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -16,32 +17,43 @@ const EditBlogs = () => {
     category: '',
   });
 
-  const [blogImage, setBlogImage] = useState(null);
+  const [blogImage, setBlogImage] = useState(null); // can be URL string or File object
   const [authorImage, setAuthorImage] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const blogImageRef = useRef(null);
+  const authorImageRef = useRef(null);
+
+  // Fetch blog data on mount
   useEffect(() => {
     const fetchBlog = async () => {
-      const docRef = doc(db, 'blogs', id);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setFormData({
-          title: data.title || '',
-          content: data.content || '',
-          author: data.author || '',
-          designation: data.designation || '',
-          tags: data.tags || '',
-          category: data.category || '',
-        });
-        setBlogImage(data.blogImage || null);
-        setAuthorImage(data.authorImage || null);
+      try {
+        const docRef = doc(db, 'blogs', id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setFormData({
+            title: data.title || '',
+            content: data.content || '',
+            author: data.author || '',
+            designation: data.designation || '',
+            tags: data.tags || '',
+            category: data.category || '',
+          });
+          setBlogImage(data.blogImage || null); // URL string
+          setAuthorImage(data.authorImage || null); // URL string
+        } else {
+          alert('Blog not found!');
+          navigate('/blogs');
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        alert('Failed to load blog data');
+        navigate('/blogs');
       }
     };
-
     fetchBlog();
-  }, [id]);
+  }, [id, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -54,15 +66,44 @@ const EditBlogs = () => {
     }
   };
 
+  // Cloudinary upload function same as AddBlogs
+  const uploadToCloudinary = async (file) => {
+    const data = new FormData();
+    data.append('file', file);
+    data.append('upload_preset', 'unsigned_blog'); // your preset
+    data.append('cloud_name', 'dixjgj1p8'); // your cloud name
+
+    const res = await fetch('https://api.cloudinary.com/v1_1/dixjgj1p8/image/upload', {
+      method: 'POST',
+      body: data,
+    });
+
+    const result = await res.json();
+    return result.secure_url;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      let updatedBlogImageUrl = blogImage;
+      let updatedAuthorImageUrl = authorImage;
+
+      // Upload new blog image if it's a File (not URL string)
+      if (blogImage && blogImage instanceof File) {
+        updatedBlogImageUrl = await uploadToCloudinary(blogImage);
+      }
+
+      // Upload new author image if it's a File
+      if (authorImage && authorImage instanceof File) {
+        updatedAuthorImageUrl = await uploadToCloudinary(authorImage);
+      }
+
       const updatedData = {
         ...formData,
-        blogImage: typeof blogImage === 'string' ? blogImage : URL.createObjectURL(blogImage),
-        authorImage: typeof authorImage === 'string' ? authorImage : URL.createObjectURL(authorImage),
+        blogImage: updatedBlogImageUrl,
+        authorImage: updatedAuthorImageUrl,
         updatedAt: new Date().toISOString(),
       };
 
@@ -72,8 +113,8 @@ const EditBlogs = () => {
       alert('Blog updated successfully!');
       navigate('/blogs');
     } catch (err) {
-      console.error('Error updating blog:', err);
-      alert('Failed to update blog. Please try again.');
+      console.error('Update error:', err);
+      alert('Failed to update blog');
     } finally {
       setLoading(false);
     }
@@ -81,150 +122,146 @@ const EditBlogs = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 px-6 py-5">
-      <h2 className="text-xl font-semibold mb-6 text-gray-800">Edit Blog</h2>
-      <div className="max-w-6xl mx-auto w-full bg-white p-6 rounded-xl shadow-xl">
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Title */}
+      <h2 className="text-lg pl-1 font-semibold mb-6 text-gray-800">Edit Blog</h2>
+      <div className="max-w-6xl mx-auto w-full bg-white p-5 rounded-xl shadow-xl transition-all duration-300">
+        <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-8">
+          {/* Blog Title */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">Blog Title</label>
+            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+              Blog Title <span className="text-red-600">*</span>
+            </label>
             <input
               type="text"
               name="title"
               value={formData.title}
               onChange={handleChange}
               placeholder="Enter blog title"
-              className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
               required
             />
           </div>
 
           {/* Blog Image */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">Blog Image</label>
-            <div className="flex items-center gap-4">
-              <label
-                htmlFor="blogImage"
-                className="cursor-pointer bg-[#960c0c] hover:bg-[#7d0a0a] text-white py-2 px-4 rounded shadow text-sm"
-              >
-                Choose Blog Image
-              </label>
-              <span className="text-sm text-gray-600">
-                {blogImage ? (typeof blogImage === 'string' ? 'Current image' : blogImage.name) : 'No file chosen'}
-              </span>
-            </div>
+            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+              Blog Image <span className="text-red-600">*</span>
+            </label>
             <input
-              id="blogImage"
+              ref={blogImageRef}
               type="file"
               accept="image/*"
               onChange={(e) => handleImageChange(e, setBlogImage)}
-              className="hidden"
+              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:bg-[#960c0c] file:text-white hover:file:bg-[#7d0a0a]"
             />
             {blogImage && (
               <img
                 src={typeof blogImage === 'string' ? blogImage : URL.createObjectURL(blogImage)}
                 alt="Blog"
-                className="mt-4 w-48 h-32 object-cover rounded-lg shadow"
+                className="mt-3 w-full max-w-sm h-48 object-cover rounded-md shadow"
               />
             )}
           </div>
 
           {/* Content */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">Content</label>
+            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+              Content <span className="text-red-600">*</span>
+            </label>
             <textarea
               name="content"
               value={formData.content}
               onChange={handleChange}
               rows="8"
-              placeholder="Write blog content..."
-              className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+              placeholder="Write your blog content here..."
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
               required
             />
           </div>
 
           {/* Category */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">Category</label>
+            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+              Category <span className="text-red-600">*</span>
+            </label>
             <input
               type="text"
               name="category"
               value={formData.category}
               onChange={handleChange}
               placeholder="e.g., Heart, Diabetes, Awareness"
-              className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
               required
             />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-base font-medium text-gray-700 mb-1">Tags (comma separated)</label>
+            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+              Tags (comma separated)
+            </label>
             <input
               type="text"
               name="tags"
               value={formData.tags}
               onChange={handleChange}
-              placeholder="e.g., health, tips, awareness"
-              className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+              placeholder="e.g., cardiology, tips, health"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
             />
           </div>
 
-          {/* Author Info */}
+          {/* Author Name, Designation, and Image */}
           <div className="grid md:grid-cols-3 gap-6">
             {/* Author Image */}
-            <div className="flex flex-col p-4 border border-gray-300 rounded-lg shadow bg-white">
-              <label className="block text-base font-medium text-gray-700 mb-1">Author Image</label>
-              <div className="flex items-center gap-4">
-                <label
-                  htmlFor="authorImage"
-                  className="cursor-pointer bg-[#960c0c] hover:bg-[#7d0a0a] text-white py-2 px-4 rounded shadow text-sm"
-                >
-                  Choose Author Image
-                </label>
-                <span className="text-sm text-gray-600">
-                  {authorImage ? (typeof authorImage === 'string' ? 'Current image' : authorImage.name) : 'No file chosen'}
-                </span>
-              </div>
+            <div className="flex flex-col justify-center p-4 border border-gray-300 rounded-lg shadow-md bg-white">
+              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+                Author Image <span className="text-red-600">*</span>
+              </label>
               <input
-                id="authorImage"
+                ref={authorImageRef}
                 type="file"
                 accept="image/*"
                 onChange={(e) => handleImageChange(e, setAuthorImage)}
-                className="hidden"
+                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:bg-[#960c0c] file:text-white hover:file:bg-[#7d0a0a]"
               />
               {authorImage && (
-                <img
-                  src={typeof authorImage === 'string' ? authorImage : URL.createObjectURL(authorImage)}
-                  alt="Author"
-                  className="mt-4 w-32 h-32 object-cover rounded-full shadow"
-                />
+                <div className="mt-4">
+                  <img
+                    src={typeof authorImage === 'string' ? authorImage : URL.createObjectURL(authorImage)}
+                    alt="Author"
+                    className="w-32 h-32 object-cover rounded-full shadow-lg"
+                  />
+                </div>
               )}
             </div>
 
             {/* Author Name */}
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">Author Name</label>
+              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+                Author Name <span className="text-red-600">*</span>
+              </label>
               <input
                 type="text"
                 name="author"
                 value={formData.author}
                 onChange={handleChange}
                 placeholder="Dr. John Doe"
-                className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
                 required
               />
             </div>
 
-            {/* Designation */}
+            {/* Author Designation */}
             <div>
-              <label className="block text-base font-medium text-gray-700 mb-1">Designation</label>
+              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
+                Author Designation
+              </label>
               <input
                 type="text"
                 name="designation"
                 value={formData.designation}
                 onChange={handleChange}
                 placeholder="Cardiologist"
-                className="w-full px-4 py-2 text-base rounded-md border border-gray-300 bg-gray-100 outline-none focus:ring-2 focus:ring-[#960c0c]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
               />
             </div>
           </div>
@@ -233,9 +270,10 @@ const EditBlogs = () => {
           <div className="text-right">
             <button
               type="submit"
+              className="w-full mt-6 flex items-center justify-center gap-2 bg-[#960c0c] text-white py-3 px-4 rounded-md font-medium text-sm transition-all duration-300 hover:bg-[#7c0a0a] active:scale-95 shadow-sm"
               disabled={loading}
-              className="w-full mt-6 bg-[#960c0c] hover:bg-[#7d0a0a] text-white py-3 text-base rounded-md font-semibold transition-all duration-300 active:scale-95 shadow"
             >
+              <FaEdit />
               {loading ? 'Updating...' : 'Update Blog'}
             </button>
           </div>
