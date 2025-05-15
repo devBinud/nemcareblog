@@ -30,6 +30,8 @@ const AllBlogs = () => {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  console.log(blogs)
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const blogsPerPage = 5;
