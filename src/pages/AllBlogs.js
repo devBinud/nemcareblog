@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase/Firebase';
 import { FaTrash, FaEdit, FaEye } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+
+const API_URL = 'https://ncblogbackend.onrender.com/api/blogs';
 
 // Utils
 const formatDate = (timestamp) => {
@@ -37,17 +37,26 @@ const AllBlogs = () => {
   const blogsPerPage = 5;
 
   const fetchBlogs = async () => {
-    const querySnapshot = await getDocs(collection(db, 'blogs'));
-    const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    setBlogs(data);
-    setLoading(false);
+    try {
+      const res = await fetch(API_URL);
+      const data = await res.json();
+      setBlogs(data);
+    } catch (err) {
+      console.error('Error fetching blogs:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
     const confirm = window.confirm('Are you sure you want to delete this blog?');
     if (!confirm) return;
-    await deleteDoc(doc(db, 'blogs', id));
-    setBlogs(prev => prev.filter(blog => blog.id !== id));
+    try {
+      await fetch(`https://ncblogbackend.onrender.com/api/blogs/${id}`, { method: 'DELETE' });
+      setBlogs(prev => prev.filter(blog => blog.id !== id));
+    } catch (err) {
+      console.error('Error deleting blog:', err);
+    }
   };
 
   useEffect(() => {
