@@ -1,51 +1,57 @@
-// src/context/AuthContext.js
 import { createContext, useContext, useState, useEffect } from 'react';
-import { auth } from '../firebase/Firebase';  // Import auth from Firebase
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';  // Import Firebase auth methods
 
 const AuthContext = createContext();
 
+const AUTH_URL = 'https://api.nemcare.com/api/auth/login';
+
 export const AuthProvider = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true); // 🆕 loading state
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedLogin = localStorage.getItem('isLoggedIn');
-    if (storedLogin === 'true') {
-      setIsLoggedIn(true);
-    }
-    setLoading(false); // 👈 done checking
+    const token = localStorage.getItem('token');
+    if (token) setIsLoggedIn(true);
+    setLoading(false);
   }, []);
 
-  const signup = async (email, password) => {
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);  // Firebase signup
-      setIsLoggedIn(true);
-      localStorage.setItem('isLoggedIn', 'true');
-    } catch (error) {
-      console.error("Signup error:", error);
-      alert("Signup failed! Please try again.");
-    }
-  };
-
   const login = async (email, password) => {
+    setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, password);  // Firebase login
-      setIsLoggedIn(true);
-      localStorage.setItem('isLoggedIn', 'true');
-    } catch (error) {
-      console.error("Login error:", error);
-      alert("Login failed! Please check your credentials.");
+      const res = await fetch(AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.message || 'Invalid email or password.');
+        return;
+      }
+
+      // Store token — handle both { token } and { data: { token } }
+      const token = json.token || json.data?.token || json.accessToken;
+      if (token) {
+        localStorage.setItem('token', token);
+        setIsLoggedIn(true);
+      } else {
+        setError('Login failed. No token received.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Unable to connect to server. Please try again.');
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('token');
     setIsLoggedIn(false);
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, login, logout, signup, loading }}>
+    <AuthContext.Provider value={{ isLoggedIn, login, logout, error, loading }}>
       {children}
     </AuthContext.Provider>
   );

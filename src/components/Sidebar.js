@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiUsers, FiPlusSquare, FiFileText, FiSettings } from 'react-icons/fi';
+import { FiHome, FiUsers, FiPlusSquare, FiFileText } from 'react-icons/fi';
 import Logo from '../assets/img/logo.png'; // Adjust the path based on your project structure
 
 const Sidebar = ({ closeSidebar }) => {
@@ -23,7 +23,7 @@ const Sidebar = ({ closeSidebar }) => {
         </NavLink>
         <NavLink to="/users" className={linkClasses} onClick={closeSidebar}>
           <FiUsers className="text-lg" />
-          Users
+          Authors
         </NavLink>
         <NavLink to="/blogs/new" className={linkClasses} onClick={closeSidebar}>
           <FiPlusSquare className="text-lg" />
@@ -34,21 +34,7 @@ const Sidebar = ({ closeSidebar }) => {
           All Blogs
         </NavLink>
       </nav>
-
-      {/* Divider */}
-      <div className="border-t border-gray-300 my-6"></div>
-
-      {/* Profile Settings */}
-      <div>
-        <NavLink 
-          to="/profile" 
-          className={`flex items-center gap-2 px-4 py-2 rounded transition-colors duration-300 ease-in-out hover:bg-[#960c0c] hover:text-white text-black`} 
-          onClick={closeSidebar}
-        >
-          <FiSettings className="text-lg" />
-          Profile Settings
-        </NavLink>
-      </div>
+      
     </div>
   );
 };

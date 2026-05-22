@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/Firebase';
+
+const API_URL = 'https://api.nemcare.com/api/blogs';
 
 const BlogDetails = () => {
   const { id } = useParams();
@@ -11,21 +11,15 @@ const BlogDetails = () => {
   useEffect(() => {
     const fetchBlog = async () => {
       try {
-        const docRef = doc(db, 'blogs', id);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          setBlog(docSnap.data());
-        } else {
-          console.log('No such document!');
-        }
+        const res = await fetch(`${API_URL}/${id}`);
+        const json = await res.json();
+        setBlog(json.data || json);
       } catch (error) {
         console.error('Error fetching blog:', error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchBlog();
   }, [id]);
 
@@ -36,19 +30,20 @@ const BlogDetails = () => {
     <div className="min-h-screen bg-gray-100 p-6">
       <h2 className="text-lg pl-1 font-semibold mb-4 text-gray-800">Blog Details</h2>
       <div className="flex flex-col md:flex-row gap-6">
-        {/* Left Side: Blog Content */}
+
+        {/* Left: Blog Content */}
         <div className="w-full md:w-2/3 bg-white rounded-xl shadow-lg p-6">
           <img
-            src={blog.blogImage}
-            alt={blog.title}
+            src={`https://api.nemcare.com${blog.featured_image}`}
+            alt={blog.image_alt_text || blog.title}
             className="w-full h-80 object-cover rounded-lg mb-4"
           />
 
-          <div className="text-sm text-gray-600 mb-1">
-            <strong>Author:</strong> {blog.author}
-          </div>
-          <div className="text-sm text-gray-600 mb-4">
-            <strong>Published:</strong> {new Date(blog.createdAt).toLocaleDateString()}
+          <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+            <span><strong>Author:</strong> {blog.author_name}</span>
+            <span><strong>Designation:</strong> {blog.author_designation}</span>
+            <span><strong>Department:</strong> {blog.department}</span>
+            <span><strong>Published:</strong> {new Date(blog.published_date).toLocaleDateString()}</span>
           </div>
 
           <h1 className="text-3xl font-bold text-gray-800 mb-4">{blog.title}</h1>
@@ -60,24 +55,25 @@ const BlogDetails = () => {
           </div>
         </div>
 
-        {/* Right Side: Tags */}
-        <div className="w-full md:w-1/3 bg-white rounded-xl shadow-lg p-6 h-fit">
-          <h2 className="text-xl font-semibold mb-4 text-gray-800">Tags</h2>
-          {blog.tags && typeof blog.tags === 'string' ? (
-            <div className="flex flex-wrap gap-2">
-              {blog.tags.split(',').map((tag, index) => (
-                <span
-                  key={index}
-                  className="bg-blue-100 text-blue-700 px-3 py-1 text-sm rounded-full"
-                >
-                  #{tag.trim()}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">No tags available</p>
-          )}
+        {/* Right: Meta & Tags */}
+        <div className="w-full md:w-1/3 space-y-4">
+          {/* Focus Keyword */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-3 text-gray-800">SEO Info</h2>
+            <p className="text-sm text-gray-600 mb-1"><strong>Meta Title:</strong> {blog.meta_title}</p>
+            <p className="text-sm text-gray-600 mb-1"><strong>Meta Description:</strong> {blog.meta_description}</p>
+            <p className="text-sm text-gray-600"><strong>Focus Keyword:</strong> {blog.focus_keyword}</p>
+          </div>
+
+          {/* Tags / Category */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-3 text-gray-800">Category</h2>
+            <span className="bg-blue-100 text-blue-700 px-3 py-1 text-sm rounded-full">
+              {blog.category}
+            </span>
+          </div>
         </div>
+
       </div>
     </div>
   );

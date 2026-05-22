@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { FaTrash, FaEdit, FaEye } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
+import { apiFetch } from '../utils/api';
+import { ToastContainer } from '../components/Toast';
+import useToast from '../hooks/useToast';
 
-const API_URL = 'https://ncblogbackend.onrender.com/api/blogs';
+const API_URL = 'https://api.nemcare.com/api/blogs';
 
-// Utils
 const formatDate = (timestamp) => {
   try {
     return new Date(timestamp).toLocaleDateString();
@@ -15,32 +17,25 @@ const formatDate = (timestamp) => {
 
 const getCategoryBadgeColor = (category) => {
   switch (category?.toLowerCase()) {
-    case 'health':
-      return 'bg-green-100 text-green-700';
-    case 'cardiology':
-      return 'bg-blue-100 text-blue-700';
-    case 'surgery':
-      return 'bg-red-100 text-red-700';
-    default:
-      return 'bg-gray-100 text-gray-700';
+    case 'health': return 'bg-green-100 text-green-700';
+    case 'cardiology': return 'bg-blue-100 text-blue-700';
+    case 'surgery': return 'bg-red-100 text-red-700';
+    default: return 'bg-gray-100 text-gray-700';
   }
 };
 
 const AllBlogs = () => {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  console.log(blogs)
-
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const blogsPerPage = 5;
+  const { toasts, removeToast, success, error } = useToast();
 
   const fetchBlogs = async () => {
     try {
       const res = await fetch(API_URL);
-      const data = await res.json();
-      setBlogs(data);
+      const json = await res.json();
+      setBlogs(json.data || []);
     } catch (err) {
       console.error('Error fetching blogs:', err);
     } finally {
@@ -52,10 +47,16 @@ const AllBlogs = () => {
     const confirm = window.confirm('Are you sure you want to delete this blog?');
     if (!confirm) return;
     try {
-      await fetch(`https://ncblogbackend.onrender.com/api/blogs/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/blogs/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.message || 'Failed to delete');
+      }
       setBlogs(prev => prev.filter(blog => blog.id !== id));
+      success('Blog deleted successfully');
     } catch (err) {
       console.error('Error deleting blog:', err);
+      error(err.message || 'Failed to delete blog');
     }
   };
 
@@ -63,7 +64,6 @@ const AllBlogs = () => {
     fetchBlogs();
   }, []);
 
-  // Pagination logic
   const totalPages = Math.ceil(blogs.length / blogsPerPage);
   const indexOfLast = currentPage * blogsPerPage;
   const indexOfFirst = indexOfLast - blogsPerPage;
@@ -76,6 +76,7 @@ const AllBlogs = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-5">
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
       <h2 className="text-lg pl-1 font-semibold mb-6 text-gray-800">All Blogs</h2>
 
       {loading ? (
@@ -97,17 +98,14 @@ const AllBlogs = () => {
             </thead>
             <tbody>
               {currentBlogs.map((blog, index) => (
-                <tr
-                  key={blog.id}
-                  className="hover:bg-gray-100 transition border-t border-gray-200"
-                >
+                <tr key={blog.id} className="hover:bg-gray-100 transition border-t border-gray-200">
                   <td className="p-4 border border-gray-200">
                     {(currentPage - 1) * blogsPerPage + index + 1}
                   </td>
                   <td className="p-4 border border-gray-200">
                     <img
-                      src={blog.blogImage}
-                      alt="Blog"
+                      src={`https://api.nemcare.com${blog.featured_image}`}
+                      alt={blog.image_alt_text || blog.title}
                       className="w-14 h-14 object-cover rounded-md border shadow-sm"
                     />
                   </td>
@@ -115,19 +113,15 @@ const AllBlogs = () => {
                     {blog.title}
                   </td>
                   <td className="p-4 border border-gray-200">
-                    <span
-                      className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getCategoryBadgeColor(
-                        blog.category || 'others'
-                      )}`}
-                    >
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getCategoryBadgeColor(blog.category)}`}>
                       {blog.category || 'Others'}
                     </span>
                   </td>
                   <td className="p-4 border border-gray-200">
                     <div className="flex flex-col md:flex-row md:items-center md:gap-4 text-sm text-gray-700">
-                      <span className="font-medium">{blog.author}</span>
+                      <span className="font-medium">{blog.author_name}</span>
                       <span className="text-gray-500 text-xs md:text-sm">
-                        {formatDate(blog.createdAt)}
+                        {formatDate(blog.published_date)}
                       </span>
                     </div>
                   </td>
@@ -154,13 +148,12 @@ const AllBlogs = () => {
                       <FaTrash />
                     </button>
                   </td>
-
                 </tr>
               ))}
             </tbody>
           </table>
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           <div className="flex justify-between items-center p-4 border-t bg-gray-50">
             <button
               onClick={() => changePage(currentPage - 1)}
@@ -174,10 +167,7 @@ const AllBlogs = () => {
                 <button
                   key={i}
                   onClick={() => changePage(i + 1)}
-                  className={`px-3 py-1 rounded shadow-sm ${currentPage === i + 1
-                      ? 'bg-[#960c0c] text-white'
-                      : 'bg-white border hover:bg-gray-100'
-                    }`}
+                  className={`px-3 py-1 rounded shadow-sm ${currentPage === i + 1 ? 'bg-[#960c0c] text-white' : 'bg-white border hover:bg-gray-100'}`}
                 >
                   {i + 1}
                 </button>

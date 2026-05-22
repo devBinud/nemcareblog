@@ -1,51 +1,55 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaEdit } from 'react-icons/fa';
-import { db } from '../firebase/Firebase'; // Adjust path if needed
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { FaEdit, FaSpinner } from 'react-icons/fa';
 import { useNavigate, useParams } from 'react-router-dom';
+import { apiFetch, apiFormFetch } from '../utils/api';
+import { ToastContainer } from '../components/Toast';
+import useToast from '../hooks/useToast';
 
 const EditBlogs = () => {
-  const { id } = useParams(); // blog doc id from route params
+  const { id } = useParams();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     title: '',
     content: '',
-    author: '',
-    designation: '',
-    tags: '',
     category: '',
+    author_name: '',
+    author_designation: '',
+    department: '',
+    meta_title: '',
+    meta_description: '',
+    focus_keyword: '',
+    image_alt_text: '',
+    published_date: '',
   });
 
-  const [blogImage, setBlogImage] = useState(null); // can be URL string or File object
-  const [authorImage, setAuthorImage] = useState(null);
+  const [featuredImage, setFeaturedImage] = useState(null);
+  const [existingImage, setExistingImage] = useState('');
   const [loading, setLoading] = useState(false);
+  const imageRef = useRef(null);
+  const { toasts, removeToast, success, error } = useToast();
 
-  const blogImageRef = useRef(null);
-  const authorImageRef = useRef(null);
-
-  // Fetch blog data on mount
   useEffect(() => {
     const fetchBlog = async () => {
       try {
-        const docRef = doc(db, 'blogs', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setFormData({
-            title: data.title || '',
-            content: data.content || '',
-            author: data.author || '',
-            designation: data.designation || '',
-            tags: data.tags || '',
-            category: data.category || '',
-          });
-          setBlogImage(data.blogImage || null); // URL string
-          setAuthorImage(data.authorImage || null); // URL string
-        } else {
-          alert('Blog not found!');
-          navigate('/blogs');
-        }
+        const res = await apiFetch(`/blogs/${id}`);
+        const json = await res.json();
+        const blog = json.data || json;
+
+        setFormData({
+          title: blog.title || '',
+          content: blog.content || '',
+          category: blog.category || '',
+          author_name: blog.author_name || '',
+          author_designation: blog.author_designation || '',
+          department: blog.department || '',
+          meta_title: blog.meta_title || '',
+          meta_description: blog.meta_description || '',
+          focus_keyword: blog.focus_keyword || '',
+          image_alt_text: blog.image_alt_text || '',
+          published_date: blog.published_date ? blog.published_date.split('T')[0] : '',
+        });
+        setExistingImage(blog.featured_image || '');
       } catch (err) {
         console.error('Fetch error:', err);
         alert('Failed to load blog data');
@@ -60,223 +64,139 @@ const EditBlogs = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleImageChange = (e, setter) => {
-    if (e.target.files[0]) {
-      setter(e.target.files[0]);
-    }
-  };
-
-  // Cloudinary upload function same as AddBlogs
-  const uploadToCloudinary = async (file) => {
-    const data = new FormData();
-    data.append('file', file);
-    data.append('upload_preset', 'unsigned_blog'); // your preset
-    data.append('cloud_name', 'dixjgj1p8'); // your cloud name
-
-    const res = await fetch('https://api.cloudinary.com/v1_1/dixjgj1p8/image/upload', {
-      method: 'POST',
-      body: data,
-    });
-
-    const result = await res.json();
-    return result.secure_url;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      let updatedBlogImageUrl = blogImage;
-      let updatedAuthorImageUrl = authorImage;
+      const data = new FormData();
+      Object.entries(formData).forEach(([key, value]) => data.append(key, value));
+      if (featuredImage instanceof File) data.append('featured_image', featuredImage);
 
-      // Upload new blog image if it's a File (not URL string)
-      if (blogImage && blogImage instanceof File) {
-        updatedBlogImageUrl = await uploadToCloudinary(blogImage);
-      }
+      const res = await apiFormFetch(`/blogs/${id}`, { method: 'PUT', body: data });
+      const json = await res.json();
 
-      // Upload new author image if it's a File
-      if (authorImage && authorImage instanceof File) {
-        updatedAuthorImageUrl = await uploadToCloudinary(authorImage);
-      }
+      if (!res.ok) throw new Error(json.message || 'Failed to update blog');
 
-      const updatedData = {
-        ...formData,
-        blogImage: updatedBlogImageUrl,
-        authorImage: updatedAuthorImageUrl,
-        updatedAt: new Date().toISOString(),
-      };
-
-      const docRef = doc(db, 'blogs', id);
-      await updateDoc(docRef, updatedData);
-
-      alert('Blog updated successfully!');
-      navigate('/blogs');
+      success('Blog updated successfully!');
+      setTimeout(() => navigate('/blogs'), 1000);
     } catch (err) {
       console.error('Update error:', err);
-      alert('Failed to update blog');
+      error(err.message || 'Failed to update blog');
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClass = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100";
+  const labelClass = "block font-semibold text-gray-700 mb-2 tracking-wide";
+
   return (
     <div className="min-h-screen bg-gray-50 px-6 py-5">
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
       <h2 className="text-lg pl-1 font-semibold mb-6 text-gray-800">Edit Blog</h2>
-      <div className="max-w-6xl mx-auto w-full bg-white p-5 rounded-xl shadow-xl transition-all duration-300">
-        <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-8">
-          {/* Blog Title */}
+      <div className="max-w-6xl mx-auto w-full bg-white p-5 rounded-xl shadow-xl">
+        <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
+
+          {/* Title */}
           <div>
-            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-              Blog Title <span className="text-red-600">*</span>
-            </label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="Enter blog title"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-              required
-            />
+            <label className={labelClass}>Blog Title <span className="text-red-600">*</span></label>
+            <input type="text" name="title" value={formData.title} onChange={handleChange}
+              placeholder="Enter blog title" className={inputClass} required />
           </div>
 
-          {/* Blog Image */}
+          {/* Featured Image */}
           <div>
-            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-              Blog Image <span className="text-red-600">*</span>
-            </label>
-            <input
-              ref={blogImageRef}
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleImageChange(e, setBlogImage)}
-              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:bg-[#960c0c] file:text-white hover:file:bg-[#7d0a0a]"
-            />
-            {blogImage && (
-              <img
-                src={typeof blogImage === 'string' ? blogImage : URL.createObjectURL(blogImage)}
-                alt="Blog"
-                className="mt-3 w-full max-w-sm h-48 object-cover rounded-md shadow"
-              />
-            )}
+            <label className={labelClass}>Featured Image</label>
+            <input ref={imageRef} type="file" accept="image/*"
+              onChange={(e) => setFeaturedImage(e.target.files[0])}
+              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:bg-[#960c0c] file:text-white hover:file:bg-[#7d0a0a]" />
+            {/* Show new preview or existing image */}
+            {featuredImage ? (
+              <img src={URL.createObjectURL(featuredImage)} alt="Preview"
+                className="mt-3 w-full max-w-sm h-48 object-cover rounded-md shadow" />
+            ) : existingImage ? (
+              <img src={`https://api.nemcare.com${existingImage}`} alt="Current"
+                className="mt-3 w-full max-w-sm h-48 object-cover rounded-md shadow" />
+            ) : null}
+          </div>
+
+          {/* Image Alt Text */}
+          <div>
+            <label className={labelClass}>Image Alt Text</label>
+            <input type="text" name="image_alt_text" value={formData.image_alt_text} onChange={handleChange}
+              placeholder="Describe the image for SEO" className={inputClass} />
           </div>
 
           {/* Content */}
           <div>
-            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-              Content <span className="text-red-600">*</span>
-            </label>
-            <textarea
-              name="content"
-              value={formData.content}
-              onChange={handleChange}
-              rows="8"
-              placeholder="Write your blog content here..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-              required
-            />
+            <label className={labelClass}>Content <span className="text-red-600">*</span></label>
+            <textarea name="content" value={formData.content} onChange={handleChange}
+              rows="8" placeholder="Write your blog content here..."
+              className={inputClass} required />
           </div>
 
-          {/* Category */}
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-              Category <span className="text-red-600">*</span>
-            </label>
-            <input
-              type="text"
-              name="category"
-              value={formData.category}
-              onChange={handleChange}
-              placeholder="e.g., Heart, Diabetes, Awareness"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-              required
-            />
+          {/* Category & Published Date */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className={labelClass}>Category <span className="text-red-600">*</span></label>
+              <input type="text" name="category" value={formData.category} onChange={handleChange}
+                placeholder="e.g., health, cardiology" className={inputClass} required />
+            </div>
+            <div>
+              <label className={labelClass}>Published Date</label>
+              <input type="date" name="published_date" value={formData.published_date} onChange={handleChange}
+                className={inputClass} />
+            </div>
           </div>
 
-          {/* Tags */}
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-              Tags (comma separated)
-            </label>
-            <input
-              type="text"
-              name="tags"
-              value={formData.tags}
-              onChange={handleChange}
-              placeholder="e.g., cardiology, tips, health"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-            />
-          </div>
-
-          {/* Author Name, Designation, and Image */}
+          {/* Author Info */}
           <div className="grid md:grid-cols-3 gap-6">
-            {/* Author Image */}
-            <div className="flex flex-col justify-center p-4 border border-gray-300 rounded-lg shadow-md bg-white">
-              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-                Author Image <span className="text-red-600">*</span>
-              </label>
-              <input
-                ref={authorImageRef}
-                type="file"
-                accept="image/*"
-                onChange={(e) => handleImageChange(e, setAuthorImage)}
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:bg-[#960c0c] file:text-white hover:file:bg-[#7d0a0a]"
-              />
-              {authorImage && (
-                <div className="mt-4">
-                  <img
-                    src={typeof authorImage === 'string' ? authorImage : URL.createObjectURL(authorImage)}
-                    alt="Author"
-                    className="w-32 h-32 object-cover rounded-full shadow-lg"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Author Name */}
             <div>
-              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-                Author Name <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="text"
-                name="author"
-                value={formData.author}
-                onChange={handleChange}
-                placeholder="Dr. John Doe"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-                required
-              />
+              <label className={labelClass}>Author Name <span className="text-red-600">*</span></label>
+              <input type="text" name="author_name" value={formData.author_name} onChange={handleChange}
+                placeholder="Dr. John Doe" className={inputClass} required />
             </div>
-
-            {/* Author Designation */}
             <div>
-              <label className="block font-semibold text-gray-700 mb-2 tracking-wide">
-                Author Designation
-              </label>
-              <input
-                type="text"
-                name="designation"
-                value={formData.designation}
-                onChange={handleChange}
-                placeholder="Cardiologist"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 outline-none transition-all duration-300 focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-              />
+              <label className={labelClass}>Author Designation</label>
+              <input type="text" name="author_designation" value={formData.author_designation} onChange={handleChange}
+                placeholder="Cardiologist" className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Department</label>
+              <input type="text" name="department" value={formData.department} onChange={handleChange}
+                placeholder="Cardiology" className={inputClass} />
             </div>
           </div>
 
-          {/* Submit Button */}
-          <div className="text-right">
-            <button
-              type="submit"
-              className="w-full mt-6 flex items-center justify-center gap-2 bg-[#960c0c] text-white py-3 px-4 rounded-md font-medium text-sm transition-all duration-300 hover:bg-[#7c0a0a] active:scale-95 shadow-sm"
-              disabled={loading}
-            >
-              <FaEdit />
-              {loading ? 'Updating...' : 'Update Blog'}
-            </button>
+          {/* SEO Fields */}
+          <div className="border-t pt-6">
+            <h3 className="text-sm font-bold text-gray-600 uppercase mb-4">SEO Settings</h3>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Meta Title</label>
+                <input type="text" name="meta_title" value={formData.meta_title} onChange={handleChange}
+                  placeholder="SEO meta title" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Meta Description</label>
+                <textarea name="meta_description" value={formData.meta_description} onChange={handleChange}
+                  rows="3" placeholder="SEO meta description" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Focus Keyword</label>
+                <input type="text" name="focus_keyword" value={formData.focus_keyword} onChange={handleChange}
+                  placeholder="e.g., diabetes treatment" className={inputClass} />
+              </div>
+            </div>
           </div>
+
+          {/* Submit */}
+          <button type="submit" disabled={loading}
+            className="w-full mt-4 flex items-center justify-center gap-2 bg-[#960c0c] text-white py-3 px-4 rounded-md font-medium text-sm transition-all duration-300 hover:bg-[#7c0a0a] active:scale-95 shadow-sm disabled:opacity-60">
+            {loading ? <><FaSpinner className="animate-spin" /> Updating...</> : <><FaEdit /> Update Blog</>}
+          </button>
+
         </form>
       </div>
     </div>
