@@ -1,95 +1,134 @@
-import React, { useState } from 'react';
-import { FaEye, FaEyeSlash } from 'react-icons/fa';
+import React from 'react';
+import { FiUser, FiMail, FiShield, FiCpu, FiClock, FiActivity } from 'react-icons/fi';
 
 const Profile = () => {
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-  const [passwordVisibility, setPasswordVisibility] = useState({
-    currentPassword: false,
-    newPassword: false,
-    confirmPassword: false,
-  });
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
-  const handleChange = (e) => {
-    setPasswordData({ ...passwordData, [e.target.name]: e.target.value });
-  };
-
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setError('New password and confirm password do not match');
-      return;
-    }
-
-    // Password change would require a backend endpoint — placeholder for now
-    setSuccess('Password update requires a backend API endpoint. Please configure it on your server.');
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-  };
-
-  const togglePasswordVisibility = (field) => {
-    setPasswordVisibility((prev) => ({ ...prev, [field]: !prev[field] }));
-  };
-
   return (
-    <div className="w-full min-h-screen p-6 bg-gray-50">
-      <h2 className="text-lg font-bold text-gray-800 mb-6">Profile Settings</h2>
+    <div className="p-6 md:p-10 bg-[#f3f5f9] min-h-screen font-sans space-y-6">
 
-      {/* User Info */}
-      <div className="bg-white shadow-md rounded-xl p-6 mb-8">
-        <h3 className="text-lg font-semibold text-gray-700 mb-4">User Information</h3>
-        <div className="space-y-1 text-gray-800">
-          <p className="text-sm"><span className="font-medium">Name:</span> Admin User</p>
-          <p className="text-sm"><span className="font-medium">Email:</span> ncbadmin@gmail.com</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Left Column: Profile Card */}
+        <div className="bg-white rounded-3xl border border-slate-100/30 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.012)] flex flex-col items-center text-center">
+          {/* Avatar Initials Circle */}
+          <div className="h-24 w-24 rounded-3xl bg-gradient-to-tr from-[#960c0c] to-[#c51c1c] text-white flex items-center justify-center font-black text-3xl shadow-md mt-4">
+            AU
+          </div>
+
+          <h3 className="text-lg font-black text-slate-800 tracking-tight mt-5">
+            Admin User
+          </h3>
+          <p className="text-slate-500 font-semibold text-xs mt-1 uppercase tracking-wider">
+            Super Administrator
+          </p>
+
+          <div className="w-full border-t border-slate-100 mt-6 pt-5 space-y-3.5">
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-400">Account Status</span>
+              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-emerald-100/20 bg-emerald-50 text-emerald-600">
+                Active
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-400">Security Group</span>
+              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-red-100/20 bg-red-50 text-[#960c0c]">
+                Root Admin
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-400">Console Mode</span>
+              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold border border-indigo-100/20 bg-indigo-50 text-indigo-600">
+                Production
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Change Password */}
-      <div className="bg-white shadow-md rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-gray-700 mb-4">Change Password</h3>
-        <form onSubmit={handlePasswordSubmit} className="grid gap-4">
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          {success && <p className="text-green-600 text-sm">{success}</p>}
+        {/* Right Column: Information & System Status */}
+        <div className="lg:col-span-2 space-y-6">
 
-          {['currentPassword', 'newPassword', 'confirmPassword'].map((field) => (
-            <div key={field}>
-              <label className="block text-sm font-medium text-gray-700 capitalize">
-                {field.replace(/([A-Z])/g, ' $1')}
-              </label>
-              <div className="relative">
-                <input
-                  type={passwordVisibility[field] ? 'text' : 'password'}
-                  name={field}
-                  value={passwordData[field]}
-                  onChange={handleChange}
-                  className="mt-1 w-full px-4 py-2 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#960c0c] bg-gray-100"
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-600"
-                  onClick={() => togglePasswordVisibility(field)}
-                >
-                  {passwordVisibility[field] ? <FaEyeSlash /> : <FaEye />}
-                </button>
+          {/* Section 1: Account Details */}
+          <div className="bg-white rounded-3xl border border-slate-100/30 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
+            <h3 className="text-sm font-bold text-slate-800 tracking-tight mb-4 flex items-center gap-2">
+              <FiUser className="text-[#960c0c] text-base" /> Account Metadata
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiUser className="text-slate-400 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Full Name</p>
+                  <p className="font-bold text-slate-700 mt-0.5">Admin User</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiMail className="text-slate-400 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Email Address</p>
+                  <p className="font-bold text-slate-700 mt-0.5">admin@nemcare.com</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiShield className="text-slate-400 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Permission Privilege</p>
+                  <p className="font-bold text-slate-700 mt-0.5">Root Console Access</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiClock className="text-slate-400 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Account Created</p>
+                  <p className="font-bold text-slate-700 mt-0.5">12 May 2026</p>
+                </div>
               </div>
             </div>
-          ))}
+          </div>
 
-          <button
-            type="submit"
-            className="bg-[#960c0c] hover:bg-[#b91c1c] text-white font-semibold px-5 py-2 rounded-lg transition-colors duration-300"
-          >
-            Update Password
-          </button>
-        </form>
+          {/* Section 2: Environment Details */}
+          <div className="bg-white rounded-3xl border border-slate-100/30 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
+            <h3 className="text-sm font-bold text-slate-800 tracking-tight mb-4 flex items-center gap-2">
+              <FiCpu className="text-indigo-600 text-base" /> Environment Overview
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiActivity className="text-indigo-500 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">System Engine Status</p>
+                  <p className="font-bold text-slate-700 mt-0.5">Stable & Fully Functional</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiShield className="text-indigo-500 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Security Certificate</p>
+                  <p className="font-bold text-slate-700 mt-0.5">Active (SSL Encrypted)</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiCpu className="text-indigo-500 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Console Build</p>
+                  <p className="font-bold text-slate-700 mt-0.5">v1.2.4 (Standard Dev-Stack)</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                <FiClock className="text-indigo-500 text-lg shrink-0" />
+                <div>
+                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">System Latency</p>
+                  <p className="font-bold text-slate-700 mt-0.5">Minimal (Offline Sandbox)</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   );

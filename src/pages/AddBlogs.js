@@ -65,7 +65,6 @@ const AddBlogs = () => {
   return (
     <div className="min-h-screen bg-gray-50 px-6 py-5">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <h2 className="text-lg pl-1 font-semibold mb-6 text-gray-800">Add New Blog</h2>
       <div className="max-w-6xl mx-auto w-full bg-white p-5 rounded-xl shadow-xl">
         <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
 
@@ -138,7 +137,7 @@ const AddBlogs = () => {
           </div>
 
           {/* SEO Fields */}
-          <div className="border-t pt-6">
+          <div className="pt-6">
             <h3 className="text-sm font-bold text-gray-600 uppercase mb-4">SEO Settings</h3>
             <div className="space-y-4">
               <div>

@@ -28,7 +28,6 @@ const BlogDetails = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      <h2 className="text-lg pl-1 font-semibold mb-4 text-gray-800">Blog Details</h2>
       <div className="flex flex-col md:flex-row gap-6">
 
         {/* Left: Blog Content */}

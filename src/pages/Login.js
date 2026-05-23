@@ -35,41 +35,45 @@ const Login = () => {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden font-sans">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
-      {/* Background */}
+      {/* Background Image */}
       <div
         className="absolute inset-0 bg-cover bg-center scale-105"
         style={{ backgroundImage: `url(${backgroundImage})` }}
       />
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      {/* Cinematic Vignette Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#960c0c]/25 via-slate-900/40 to-slate-950/65 backdrop-blur-[3px]" />
 
-      {/* Card */}
-      <div className="relative z-10 bg-white/95 backdrop-blur rounded-2xl shadow-2xl p-8 w-full max-w-sm mx-4 animate-fade-in">
+      {/* Premium White Login Card */}
+      <div className="relative z-10 bg-white rounded-3xl border border-slate-200/50 shadow-[0_20px_50px_rgba(15,23,42,0.08)] p-10 w-full max-w-[420px] mx-4 animate-fade-in">
 
         {/* Logo */}
-        <div className="flex justify-center mb-8">
+        <div className="flex justify-center mb-6">
           <img src={logo} alt="Nemcare Logo" className="h-16 object-contain" />
         </div>
 
-        <h2 className="text-center text-gray-700 text-sm font-medium mb-6 tracking-wide uppercase">
-          Admin Panel Login
+        <h2 className="text-center text-slate-800 text-xl font-bold tracking-tight mb-1">
+          Welcome Back
         </h2>
+        <p className="text-center text-slate-400 text-xs mb-8">
+          Admin Blog Management System
+        </p>
 
-        <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
+        <form onSubmit={handleLogin} autoComplete="off" className="space-y-5">
 
           {/* Email */}
           <div className="group">
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Email
+            <label className="text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">
+              Email Address
             </label>
-            <div className="flex items-center border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 transition-all duration-200 focus-within:border-[#960c0c] focus-within:ring-2 focus-within:ring-[#960c0c]/20 focus-within:bg-white">
-              <FaEnvelope className="text-gray-400 text-sm shrink-0" />
+            <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3.5 transition-all duration-300 focus-within:border-[#960c0c] focus-within:bg-white">
+              <FaEnvelope className="text-slate-400 text-sm shrink-0" />
               <input
                 type="email"
-                placeholder="admin@nemcare.com"
-                className="w-full pl-3 bg-transparent outline-none text-sm text-gray-700 placeholder-gray-400"
+                placeholder="Enter Admin Email"
+                className="w-full pl-3 bg-transparent outline-none text-sm text-slate-800 placeholder-slate-400"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -80,15 +84,17 @@ const Login = () => {
 
           {/* Password */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Password
-            </label>
-            <div className="flex items-center border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 transition-all duration-200 focus-within:border-[#960c0c] focus-within:ring-2 focus-within:ring-[#960c0c]/20 focus-within:bg-white">
-              <FaLock className="text-gray-400 text-sm shrink-0" />
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Password
+              </label>
+            </div>
+            <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3.5 transition-all duration-300 focus-within:border-[#960c0c] focus-within:bg-white">
+              <FaLock className="text-slate-400 text-sm shrink-0" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
-                className="w-full pl-3 bg-transparent outline-none text-sm text-gray-700 placeholder-gray-400"
+                className="w-full pl-3 bg-transparent outline-none text-sm text-slate-800 placeholder-slate-400"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -97,7 +103,7 @@ const Login = () => {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-gray-400 hover:text-gray-600 transition ml-2"
+                className="text-slate-400 hover:text-slate-700 transition ml-2 cursor-pointer"
               >
                 {showPassword ? <FaEyeSlash /> : <FaEye />}
               </button>
@@ -108,12 +114,12 @@ const Login = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 bg-[#960c0c] hover:bg-[#7d0a0a] disabled:bg-[#960c0c]/60 text-white font-semibold py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-95"
+            className="w-full mt-2 bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white font-bold py-3.5 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 shadow-md shadow-red-950/10 active:scale-[0.98] cursor-pointer"
           >
             {loading ? (
               <>
                 <FaSpinner className="animate-spin" />
-                Signing in...
+                Verifying Credentials...
               </>
             ) : (
               'Sign In'
@@ -121,7 +127,7 @@ const Login = () => {
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-[10px] text-slate-400 mt-8">
           © {new Date().getFullYear()} Nemcare Hospital. All rights reserved.
         </p>
       </div>
