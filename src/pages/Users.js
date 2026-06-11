@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 const API_URL = 'https://api.nemcare.com/api/blogs';
 
@@ -14,7 +14,7 @@ const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch(API_URL);
       const json = await res.json();
@@ -63,11 +63,11 @@ const Users = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   return (
     <div className="p-6 md:p-10 space-y-8 bg-[#f3f5f9] min-h-screen font-sans">

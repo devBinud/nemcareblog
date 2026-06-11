@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { FiPlus, FiUser, FiBriefcase, FiLayers, FiAlertCircle, FiCheck } from 'react-icons/fi';
+import React, { useState, useEffect, useCallback } from 'react';
+import { FiPlus, FiUser, FiLayers } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
+// Mock data fallbacks for showcase moved to module scope
+const mockDepts = [
+  { id: 1, name: 'Cardiology', description: 'Heart and cardiovascular system care' },
+  { id: 2, name: 'Pediatrics', description: 'Medical care for infants, children, and adolescents' },
+  { id: 3, name: 'Neurology', description: 'Disorders of the nervous system' }
+];
+
+const mockDocs = [
+  { id: 1, name: 'Dr. Sarah Connor', designation: 'Senior Cardiologist', department_id: 1, department: { name: 'Cardiology' } },
+  { id: 2, name: 'Dr. Alan Vance', designation: 'Pediatric Consultant', department_id: 2, department: { name: 'Pediatrics' } },
+  { id: 3, name: 'Dr. Robert Carter', designation: 'Chief Neurologist', department_id: 3, department: { name: 'Neurology' } }
+];
 
 const ManageDoctors = () => {
   const { toasts, removeToast, success, error } = useToast();
@@ -24,21 +36,8 @@ const ManageDoctors = () => {
   const [docDeptId, setDocDeptId] = useState('');
   const [submittingDoc, setSubmittingDoc] = useState(false);
 
-  // Mock data fallbacks for showcase
-  const mockDepts = [
-    { id: 1, name: 'Cardiology', description: 'Heart and cardiovascular system care' },
-    { id: 2, name: 'Pediatrics', description: 'Medical care for infants, children, and adolescents' },
-    { id: 3, name: 'Neurology', description: 'Disorders of the nervous system' }
-  ];
-
-  const mockDocs = [
-    { id: 1, name: 'Dr. Sarah Connor', designation: 'Senior Cardiologist', department_id: 1, department: { name: 'Cardiology' } },
-    { id: 2, name: 'Dr. Alan Vance', designation: 'Pediatric Consultant', department_id: 2, department: { name: 'Pediatrics' } },
-    { id: 3, name: 'Dr. Robert Carter', designation: 'Chief Neurologist', department_id: 3, department: { name: 'Neurology' } }
-  ];
-
   // Fetch Departments
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     try {
       const res = await apiFetch('/departments');
       if (res.ok) {
@@ -53,10 +52,10 @@ const ManageDoctors = () => {
     } finally {
       setLoadingDepts(false);
     }
-  };
+  }, []);
 
   // Fetch Doctors
-  const fetchDoctors = async () => {
+  const fetchDoctors = useCallback(async () => {
     try {
       const res = await apiFetch('/doctors');
       if (res.ok) {
@@ -72,12 +71,12 @@ const ManageDoctors = () => {
     } finally {
       setLoadingDocs(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDepartments();
     fetchDoctors();
-  }, []);
+  }, [fetchDepartments, fetchDoctors]);
 
   // Submit Department
   const handleAddDept = async (e) => {
