@@ -12,6 +12,10 @@ import BlogDetails from './pages/BlogDetails';
 import EditBlogs from './pages/EditBlogs';
 import Profile from './pages/Profile';
 import Signup from './pages/Signup';
+import Appointments from './pages/Appointments';
+import ManageDoctors from './pages/ManageDoctors';
+import ManageSlots from './pages/ManageSlots';
+import DoctorAvailability from './pages/DoctorAvailability';
 
 function App() {
   return (
@@ -25,7 +29,9 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<Appointments />} />
+        <Route path="appointments" element={<Appointments />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="users" element={<Users />} />
         <Route path="/blogs/new" element={<AddBlogs />} />
         <Route path="/blogs/:id" element={<BlogDetails />} />
@@ -33,6 +39,9 @@ function App() {
         <Route path="/blogs" element={<AllBlogs />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="doctors" element={<ManageDoctors />} />
+        <Route path="slots" element={<ManageSlots />} />
+        <Route path="availability" element={<DoctorAvailability />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
