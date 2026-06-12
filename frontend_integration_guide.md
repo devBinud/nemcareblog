@@ -57,6 +57,23 @@ This guide outlines the logical flow, endpoints, request payloads, and query par
 * **Response structure**:
   - `data`: Array of objects `[{ id, start_time, end_time }]`
 
+### 3. Update Master Time Slot
+* **Action**: Edit the start and end times of an existing master slot.
+* **Endpoint**: `PUT /api/slots/:id`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Payload**:
+  ```json
+  {
+    "start_time": "10:30", // Format: HH:MM (24-hour)
+    "end_time": "10:45"   // Format: HH:MM (24-hour)
+  }
+  ```
+
+### 4. Delete Master Time Slot
+* **Action**: Delete an existing master slot.
+* **Endpoint**: `DELETE /api/slots/:id`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+
 ---
 
 ## Flow 3: Managing Availability (Doctor Override Calendar)
@@ -97,6 +114,29 @@ This guide outlines the logical flow, endpoints, request payloads, and query par
   }
   ```
 * **Follow-up**: After a successful toggle, trigger a re-fetch of the doctor slots endpoint (`GET /api/doctors/:id/slots?date=YYYY-MM-DD`) to refresh the calendar UI.
+
+### 3. Make Doctor Unavailable for the Day
+* **Action**: Disables all slots for a doctor on a specific date.
+* **Endpoint**: `POST /api/doctors/:id/unavailable`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Payload**:
+  ```json
+  {
+    "date": "2026-06-15"
+  }
+  ```
+
+### 4. Make Doctor Available for the Day
+* **Action**: Resets all slot overrides for a doctor on a specific date (re-enabling all slots to default).
+* **Endpoint**: `POST /api/doctors/:id/available`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Payload**:
+  ```json
+  {
+    "date": "2026-06-15"
+  }
+  ```
+
 
 ---
 

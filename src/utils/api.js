@@ -1,4 +1,4 @@
-const BASE_URL = 'https://api.nemcare.com/api';
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://api.nemcare.com/api';
 
 const getToken = () => localStorage.getItem('token');
 

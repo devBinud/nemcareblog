@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiClock, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiClock, FiPlus, FiTrash2, FiEdit2, FiX } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -23,17 +23,7 @@ const formatSlotRange = (start, end) => {
 
 
 
-// Mock data fallbacks for showcase moved outside component
-const mockSlots = [
-  { id: 1, start_time: '09:00', end_time: '09:15' },
-  { id: 2, start_time: '09:15', end_time: '09:30' },
-  { id: 3, start_time: '09:30', end_time: '09:45' },
-  { id: 4, start_time: '09:45', end_time: '10:00' },
-  { id: 5, start_time: '10:00', end_time: '10:15' },
-  { id: 6, start_time: '10:15', end_time: '10:30' },
-  { id: 7, start_time: '11:00', end_time: '11:15' },
-  { id: 8, start_time: '11:15', end_time: '11:30' },
-];
+// Helper to sort slots chronologically
 
 // Helper to sort slots chronologically moved to module level
 const sortSlots = (slotsList) => {
@@ -47,15 +37,31 @@ const sortSlots = (slotsList) => {
 
 const ManageSlots = () => {
   const { toasts, removeToast, success, error } = useToast();
-  
+
   // States
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Form States
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [editingSlot, setEditingSlot] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  const handleEditSlot = (slot) => {
+    setEditingSlot(slot);
+    setStartTime(slot.start_time);
+    setEndTime(slot.end_time);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSlot(null);
+    setIsEditModalOpen(false);
+    setStartTime('');
+    setEndTime('');
+  };
 
 
   // Fetch Slots
@@ -67,19 +73,65 @@ const ManageSlots = () => {
         const data = json.data || json;
         setSlots(sortSlots(data));
       } else {
-        throw new Error('Failed to fetch master slots');
+        error('Failed to fetch master slots');
       }
     } catch (err) {
-      console.warn('API connection failed. Using mock slots.', err);
-      setSlots(sortSlots(mockSlots));
+      console.error('API connection failed.', err);
+      error('Network error. Could not load slots from server.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [error]);
 
   useEffect(() => {
     fetchSlots();
   }, [fetchSlots]);
+
+
+
+  const handleUpdateSlotSubmit = async (e) => {
+    e.preventDefault();
+    if (!startTime || !endTime) {
+      error('Please select both start and end times.');
+      return;
+    }
+
+    // Validate that end time is after start time
+    const startNum = startTime.split(':').map(Number);
+    const endNum = endTime.split(':').map(Number);
+    const startMinutes = startNum[0] * 60 + startNum[1];
+    const endMinutes = endNum[0] * 60 + endNum[1];
+
+    if (endMinutes <= startMinutes) {
+      error('End time must be after start time.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/slots/${editingSlot.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          start_time: startTime,
+          end_time: endTime,
+        }),
+      });
+
+      if (res.ok) {
+        success('Master slot updated successfully!');
+        handleCancelEdit();
+        fetchSlots();
+      } else {
+        const json = await res.json();
+        error(json.message || 'Failed to update slot');
+      }
+    } catch (err) {
+      console.error(err);
+      error('Network error. Failed to update slot.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Submit Add Slot
   const handleAddSlot = async (e) => {
@@ -117,17 +169,11 @@ const ManageSlots = () => {
         fetchSlots();
       } else {
         const json = await res.json();
-        throw new Error(json.message || 'Failed to create slot');
+        error(json.message || 'Failed to create slot');
       }
     } catch (err) {
       console.error(err);
-      // Fallback behavior for offline/showcase: update local state
-      const newId = slots.length ? Math.max(...slots.map(s => s.id)) + 1 : 1;
-      const newSlot = { id: newId, start_time: startTime, end_time: endTime };
-      setSlots(sortSlots([...slots, newSlot]));
-      success('Master slot configured successfully (offline mode)!');
-      setStartTime('');
-      setEndTime('');
+      error('Network error. Failed to configure slot.');
     } finally {
       setSubmitting(false);
     }
@@ -147,12 +193,11 @@ const ManageSlots = () => {
         fetchSlots();
       } else {
         const json = await res.json();
-        throw new Error(json.message || 'Failed to delete slot');
+        error(json.message || 'Failed to delete slot');
       }
     } catch (err) {
-      console.warn('API delete failed. Updating local state (offline mode).', err);
-      setSlots(slots.filter(s => s.id !== id));
-      success('Master slot deleted successfully (offline mode)!');
+      console.error(err);
+      error('Network error. Failed to delete slot.');
     }
   };
 
@@ -167,7 +212,7 @@ const ManageSlots = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         {/* Left Column: Form (1/3 Width) */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-3xl border border-slate-100/20 p-6 md:p-7 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
@@ -238,7 +283,7 @@ const ManageSlots = () => {
                     >
                       {/* Left vertical brand accent */}
                       <div className="absolute top-0 left-0 bottom-0 w-1 bg-slate-200 group-hover:bg-[#960c0c] transition-colors duration-300" />
-                      
+
                       <div className="flex items-center gap-3.5 pl-1.5">
                         <div className="p-2 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-[#960c0c]/5 group-hover:text-[#960c0c] transition-colors duration-300 flex items-center justify-center shrink-0">
                           <FiClock className="text-sm" />
@@ -252,11 +297,18 @@ const ManageSlots = () => {
                           </span>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-2">
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleEditSlot(slot)}
+                          className="text-slate-400 hover:text-[#960c0c] hover:bg-red-50 p-1.5 rounded-lg transition-all duration-200 cursor-pointer shrink-0"
+                          title="Edit Slot"
+                        >
+                          <FiEdit2 className="text-xs" />
+                        </button>
                         <button
                           onClick={() => handleDeleteSlot(slot.id)}
-                          className="text-slate-300 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all duration-200 cursor-pointer opacity-0 group-hover:opacity-100 shrink-0"
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all duration-200 cursor-pointer shrink-0"
                           title="Delete Slot"
                         >
                           <FiTrash2 className="text-xs" />
@@ -271,6 +323,74 @@ const ManageSlots = () => {
         </div>
 
       </div>
+
+      {/* Edit Slot Modal Overlay */}
+      {isEditModalOpen && editingSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-md w-full p-6 md:p-8 space-y-6 animate-fade-in">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                <FiClock className="text-[#960c0c]" /> Edit Master Slot #{editingSlot.id}
+              </h3>
+              <button
+                onClick={handleCancelEdit}
+                className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
+              >
+                <FiX className="text-lg" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleUpdateSlotSubmit} className="space-y-5">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Start Time (24h)</label>
+                <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
+                  <FiClock className="text-slate-400 text-xs shrink-0" />
+                  <input
+                    type="time"
+                    className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">End Time (24h)</label>
+                <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
+                  <FiClock className="text-slate-400 text-xs shrink-0" />
+                  <input
+                    type="time"
+                    className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer"
+                >
+                  {submitting ? 'Saving Changes...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
