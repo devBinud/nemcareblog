@@ -58,7 +58,7 @@ const Login = () => {
           Welcome Back
         </h2>
         <p className="text-center text-slate-400 text-xs mb-8">
-          Admin Blog Management System
+          Admin Panel
         </p>
 
         <form onSubmit={handleLogin} autoComplete="off" className="space-y-5">
