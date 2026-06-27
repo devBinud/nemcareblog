@@ -23,18 +23,61 @@ This guide outlines the logical flow, endpoints, request payloads, and query par
 * **Response structure**:
   - `data`: Array of objects `[{ id, name, description }]`
 
-### 3. Add Doctor
-* **Action**: Admin enters doctor name, designation, and selects a department from a dropdown of retrieved departments.
+### 3. Add Doctor (Updated)
+* **Action**: Admin enters doctor details and optionally selects their available time slots.
 * **Endpoint**: `POST /api/doctors`
 * **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
 * **Payload**:
   ```json
   {
-    "name": "Dr. Sarah Connor",
-    "designation": "Senior Cardiologist",
-    "department_id": 1
+    "name": "Dr. Biswajit Deuri",
+    "designation": "Senior Consultant",
+    "department_id": 1,
+    "image_url": "/uploads/doctors/biswajit.jpg",       // Optional
+    "experience_years": "16+ Years",                    // Optional
+    "specialty": "Gastrointestinal Surgery",            // Optional
+    "bio": "Specialist in GI, hepatobiliary...",        // Optional
+    "education": "MBBS, MS (Gen. Surgery)...",          // Optional
+    "previous_experience": "Apollo New Delhi...",       // Optional
+    "areas_of_expertise": "Laparoscopic Surgery...",    // Optional
+    "achievements": "Academic Bursary (2014)...",       // Optional
+    "contact_email": "deuribiswajit@gmail.com",         // Optional
+    "slot_ids": [1, 2, 3, 4]                            // Optional: array of master slot IDs to assign
   }
   ```
+
+### 4. Edit Doctor Profile
+* **Action**: Update a doctor's profile fields.
+* **Endpoint**: `PUT /api/doctors/:id`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Payload**:
+  ```json
+  {
+    "name": "Dr. Biswajit Deuri (Updated)",
+    "designation": "Head Consultant",
+    "experience_years": "18+ Years",
+    "bio": "Updated biography here...",
+    "contact_email": "newemail@gmail.com"
+    // (You can send any or all fields from the Add Doctor payload to update them)
+  }
+  ```
+
+### 5. Assign/Edit Doctor Slots Separately
+* **Action**: Admin updates the doctor's weekly active slots schedule.
+* **Endpoint**: `POST /api/doctors/:id/slots`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Payload**:
+  ```json
+  {
+    "slot_ids": [1, 2, 5, 8] // Complete list of slot IDs that this doctor works
+  }
+  ```
+
+### 6. Delete Doctor Profile
+* **Action**: Remove a doctor from the system.
+* **Endpoint**: `DELETE /api/doctors/:id`
+* **Headers**: `Authorization: Bearer <ADMIN_JWT_TOKEN>`
+* **Note**: This request will fail with `400 Bad Request` if the doctor has active, upcoming appointments. The Admin must cancel/reschedule those appointments before deleting the doctor.
 
 ---
 
@@ -81,6 +124,7 @@ This guide outlines the logical flow, endpoints, request payloads, and query par
 ### 1. Retrieve Dynamic Availability Status
 * **Action**: Admin selects a **Doctor** from a dropdown and a **Date** from a date picker.
 * **Endpoint**: `GET /api/doctors/:id/slots?date=YYYY-MM-DD`
+* **Updated Behavior**: This endpoint now **only returns time slots that are actively assigned to this doctor** by the admin, instead of returning all master slots.
 * **Response structure**:
   - `data`:
     ```json

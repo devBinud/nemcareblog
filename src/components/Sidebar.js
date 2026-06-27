@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiUsers, FiPlusSquare, FiFileText, FiUser, FiChevronRight, FiCalendar, FiClock, FiCheckSquare, FiBriefcase } from 'react-icons/fi';
+import { FiHome, FiUsers, FiPlusSquare, FiFileText, FiUser, FiChevronRight, FiCalendar, FiClock, FiCheckSquare, FiBriefcase, FiLayers } from 'react-icons/fi';
 import Logo from '../assets/img/logo.png'; // Adjust the path based on your project structure
 
 const Sidebar = ({ closeSidebar }) => {
@@ -37,12 +37,45 @@ const Sidebar = ({ closeSidebar }) => {
                   </>
                 )}
               </NavLink>
-              <NavLink to="/doctors" className={linkClasses} onClick={closeSidebar}>
+              <NavLink to="/departments" end className={linkClasses} onClick={closeSidebar}>
+                {({ isActive }) => (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <FiLayers className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? 'text-[#960c0c]' : 'text-slate-400 group-hover:text-slate-650'}`} />
+                      <span>All Departments</span>
+                    </div>
+                    <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? 'text-[#960c0c]/80' : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                  </>
+                )}
+              </NavLink>
+              <NavLink to="/departments/new" className={linkClasses} onClick={closeSidebar}>
+                {({ isActive }) => (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? 'text-[#960c0c]' : 'text-slate-400 group-hover:text-slate-650'}`} />
+                      <span>Add Department</span>
+                    </div>
+                    <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? 'text-[#960c0c]/80' : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                  </>
+                )}
+              </NavLink>
+              <NavLink to="/doctors" end className={linkClasses} onClick={closeSidebar}>
                 {({ isActive }) => (
                   <>
                     <div className="flex items-center gap-3">
                       <FiBriefcase className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? 'text-[#960c0c]' : 'text-slate-400 group-hover:text-slate-650'}`} />
-                      <span>Doctors & Depts</span>
+                      <span>All Doctors</span>
+                    </div>
+                    <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? 'text-[#960c0c]/80' : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                  </>
+                )}
+              </NavLink>
+              <NavLink to="/doctors/new" className={linkClasses} onClick={closeSidebar}>
+                {({ isActive }) => (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? 'text-[#960c0c]' : 'text-slate-400 group-hover:text-slate-650'}`} />
+                      <span>Add Doctor</span>
                     </div>
                     <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? 'text-[#960c0c]/80' : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
                   </>
@@ -53,7 +86,7 @@ const Sidebar = ({ closeSidebar }) => {
                   <>
                     <div className="flex items-center gap-3">
                       <FiClock className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? 'text-[#960c0c]' : 'text-slate-400 group-hover:text-slate-650'}`} />
-                      <span>Time Slots</span>
+                      <span>Master Time Slots</span>
                     </div>
                     <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? 'text-[#960c0c]/80' : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
                   </>

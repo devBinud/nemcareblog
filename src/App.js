@@ -13,7 +13,10 @@ import EditBlogs from './pages/EditBlogs';
 import Profile from './pages/Profile';
 import Signup from './pages/Signup';
 import Appointments from './pages/Appointments';
-import ManageDoctors from './pages/ManageDoctors';
+import AddDepartment from './pages/AddDepartment';
+import AllDepartments from './pages/AllDepartments';
+import AddDoctor from './pages/AddDoctor';
+import AllDoctors from './pages/AllDoctors';
 import ManageSlots from './pages/ManageSlots';
 import DoctorAvailability from './pages/DoctorAvailability';
 
@@ -39,7 +42,10 @@ function App() {
         <Route path="/blogs" element={<AllBlogs />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="doctors" element={<ManageDoctors />} />
+        <Route path="departments" element={<AllDepartments />} />
+        <Route path="departments/new" element={<AddDepartment />} />
+        <Route path="doctors" element={<AllDoctors />} />
+        <Route path="doctors/new" element={<AddDoctor />} />
         <Route path="slots" element={<ManageSlots />} />
         <Route path="availability" element={<DoctorAvailability />} />
         <Route path="*" element={<NotFound />} />

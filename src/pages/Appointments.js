@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock } from 'react-icons/fi';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -29,72 +29,6 @@ const formatSlotRange = (start, end) => {
   return `${formatTimeTo12Hour(start)} - ${formatTimeTo12Hour(end)}`;
 };
 
-// Mock data fallbacks moved outside the component to prevent recreating on every render
-const mockDepts = [
-  { id: 1, name: 'Cardiology' },
-  { id: 2, name: 'Pediatrics' },
-  { id: 3, name: 'Neurology' }
-];
-
-const mockDocs = [
-  { id: 1, name: 'Dr. Sarah Connor', designation: 'Senior Cardiologist', department_id: 1 },
-  { id: 2, name: 'Dr. Alan Vance', designation: 'Pediatric Consultant', department_id: 2 },
-  { id: 3, name: 'Dr. Robert Carter', designation: 'Chief Neurologist', department_id: 3 }
-];
-
-const mockAppointments = [
-  {
-    id: 1,
-    patient_name: 'John Doe',
-    patient_email: 'john@example.com',
-    patient_phone: '1234567890',
-    doctor_id: 1,
-    doctor: { name: 'Dr. Sarah Connor' },
-    department: { name: 'Cardiology' },
-    date: '2026-06-15',
-    start_time: '10:00',
-    end_time: '10:15',
-    status: 'booked'
-  },
-  {
-    id: 2,
-    patient_name: 'Jane Smith',
-    patient_email: 'jane@example.com',
-    patient_phone: '9876543210',
-    doctor_id: 2,
-    doctor: { name: 'Dr. Alan Vance' },
-    department: { name: 'Pediatrics' },
-    date: '2026-06-16',
-    start_time: '09:15',
-    end_time: '09:30',
-    status: 'cancelled'
-  },
-  {
-    id: 3,
-    patient_name: 'Robert Miller',
-    patient_email: 'robert@example.com',
-    patient_phone: '5551234567',
-    doctor_id: 3,
-    doctor: { name: 'Dr. Robert Carter' },
-    department: { name: 'Neurology' },
-    date: '2026-06-18',
-    start_time: '11:00',
-    end_time: '11:15',
-    status: 'booked'
-  }
-];
-
-const defaultMockSlots = [
-  { id: 1, start_time: '09:00', end_time: '09:15', available: true },
-  { id: 2, start_time: '09:15', end_time: '09:30', available: false },
-  { id: 3, start_time: '09:30', end_time: '09:45', available: true },
-  { id: 4, start_time: '09:45', end_time: '10:00', available: true },
-  { id: 5, start_time: '10:00', end_time: '10:15', available: true },
-  { id: 6, start_time: '10:15', end_time: '10:30', available: false },
-  { id: 7, start_time: '11:00', end_time: '11:15', available: true },
-  { id: 8, start_time: '11:15', end_time: '11:30', available: true },
-];
-
 const Appointments = () => {
   const { toasts, removeToast, success, error } = useToast();
 
@@ -108,6 +42,8 @@ const Appointments = () => {
 
   // Booking Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFileName, setExportFileName] = useState('');
   const [bookingDeptId, setBookingDeptId] = useState('');
   const [bookingDocId, setBookingDocId] = useState('');
   const [bookingDate, setBookingDate] = useState('');
@@ -120,6 +56,21 @@ const Appointments = () => {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingFormSlots, setLoadingFormSlots] = useState(false);
   const [submittingBooking, setSubmittingBooking] = useState(false);
+
+  // Filter States
+  const [filterDeptId, setFilterDeptId] = useState('');
+  const [filterDocId, setFilterDocId] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterSearch, setFilterSearch] = useState('');
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Reset pagination to page 1 on filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterDeptId, filterDocId, filterDate, filterSearch]);
 
   // Fetch Appointments List
   const fetchAppointments = useCallback(async () => {
@@ -134,13 +85,12 @@ const Appointments = () => {
         throw new Error('Failed to fetch appointments list');
       }
     } catch (err) {
-      console.warn('API connection failed. Using local storage or mock appointments.', err);
+      console.warn('API connection failed. Using local storage.', err);
       const local = localStorage.getItem('nemcare_appointments');
       if (local) {
         setAppointments(JSON.parse(local));
       } else {
-        setAppointments(mockAppointments);
-        localStorage.setItem('nemcare_appointments', JSON.stringify(mockAppointments));
+        setAppointments([]);
       }
     } finally {
       setLoading(false);
@@ -153,8 +103,8 @@ const Appointments = () => {
       const deptsRes = await apiFetch('/departments');
       const docsRes = await apiFetch('/doctors');
 
-      let deptsData = mockDepts;
-      let docsData = mockDocs;
+      let deptsData = [];
+      let docsData = [];
 
       if (deptsRes.ok) {
         const json = await deptsRes.json();
@@ -168,9 +118,7 @@ const Appointments = () => {
       setDepartments(deptsData);
       setDoctors(docsData);
     } catch (err) {
-      console.warn('Lookup fetch failed. Using default mock definitions.', err);
-      setDepartments(mockDepts);
-      setDoctors(mockDocs);
+      console.warn('Lookup fetch failed.', err);
     }
   }, []);
 
@@ -214,35 +162,8 @@ const Appointments = () => {
           throw new Error('Failed to fetch slots');
         }
       } catch (err) {
-        console.warn('API slots fetch failed. Mocking available slots.', err);
-
-        // Load manual overrides from localStorage to cross-reference
-        const localOverridesStr = localStorage.getItem('nemcare_availability_overrides');
-        const localOverrides = localOverridesStr ? JSON.parse(localOverridesStr) : {};
-
-        // Fallback to default mock slots, cross-referenced with local appointments and overrides
-        const processedMockSlots = defaultMockSlots.map(s => {
-          const isLocalBooked = appointments.some(app =>
-            app.doctor_id === Number(bookingDocId) &&
-            app.date === bookingDate &&
-            (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
-            app.status === 'booked'
-          );
-
-          const overrideKey = `${bookingDocId}-${bookingDate}-${s.id}`;
-          const isManuallyDisabled = localOverrides[overrideKey] !== undefined
-            ? localOverrides[overrideKey]
-            : s.is_manually_disabled;
-
-          return {
-            ...s,
-            is_booked: isLocalBooked,
-            is_manually_disabled: !isLocalBooked && isManuallyDisabled,
-            available: !isLocalBooked && !isManuallyDisabled
-          };
-        });
-
-        setAvailableSlots(processedMockSlots.filter(s => s.available));
+        console.warn('API slots fetch failed.', err);
+        setAvailableSlots([]);
       } finally {
         setLoadingFormSlots(false);
       }
@@ -362,10 +283,114 @@ const Appointments = () => {
     setAvailableSlots([]);
   };
 
+  // Filtered Appointments list
+  const filteredAppointments = useMemo(() => {
+    return appointments.filter(app => {
+      // 1. Department Filter
+      if (filterDeptId) {
+        const matchedDoc = doctors.find(d => Number(d.id) === Number(app.doctor_id));
+        const appDeptId = app.department_id || matchedDoc?.department_id;
+        if (Number(appDeptId) !== Number(filterDeptId)) {
+          return false;
+        }
+      }
+
+      // 2. Doctor Filter
+      if (filterDocId && Number(app.doctor_id) !== Number(filterDocId)) {
+        return false;
+      }
+
+      // 3. Date Filter
+      if (filterDate && app.date !== filterDate) {
+        return false;
+      }
+
+      // 4. Search Filter
+      if (filterSearch.trim()) {
+        const query = filterSearch.toLowerCase();
+        const matchName = app.patient_name?.toLowerCase().includes(query);
+        const matchEmail = app.patient_email?.toLowerCase().includes(query);
+        const matchPhone = app.patient_phone?.includes(query);
+        if (!matchName && !matchEmail && !matchPhone) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [appointments, doctors, filterDeptId, filterDocId, filterDate, filterSearch]);
+
+  // Paginated Appointments
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
+  const paginatedAppointments = useMemo(() => {
+    return filteredAppointments.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [filteredAppointments, currentPage]);
+
   // Compute Stats
-  const totalBookings = appointments.length;
-  const activeBookings = appointments.filter(a => a.status === 'booked').length;
-  const cancelledBookings = appointments.filter(a => a.status === 'cancelled').length;
+  const totalBookings = filteredAppointments.length;
+  const activeBookings = filteredAppointments.filter(a => a.status === 'booked').length;
+  const cancelledBookings = filteredAppointments.filter(a => a.status === 'cancelled').length;
+
+  // Export filtered appointments to CSV (Excel compatible)
+  const handleExportToExcel = (fileNameInput) => {
+    // Create CSV headers
+    const headers = ['Booking ID', 'Patient Name', 'Email', 'Phone', 'Booking Date', 'Time Slot', 'Doctor', 'Department', 'Status'];
+    
+    // Convert appointments data to CSV rows
+    const rows = filteredAppointments.map((app) => {
+      const matchedDoc = doctors.find(d => Number(d.id) === Number(app.doctor_id));
+      const docName = app.doctor?.name || matchedDoc?.name || 'Unknown Doctor';
+      const cleanDocName = 'Dr. ' + docName.replace(/^Dr\.\s+/i, '');
+
+      const matchedDept = departments.find(d => Number(d.id) === Number(matchedDoc?.department_id || app.department_id));
+      const deptName = app.department?.name || matchedDept?.name || 'Medical Specialist';
+      const formattedDeptName = deptName.toUpperCase();
+
+      const formattedDate = new Date(app.date).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+
+      const formattedTime = formatSlotRange(app.start_time, app.end_time);
+      const displayStatus = app.status === 'booked' ? 'ACTIVE' : 'CANCELLED';
+      
+      return [
+        `#${String(app.id).padStart(4, '0')}`,
+        app.patient_name,
+        app.patient_email || 'N/A',
+        app.patient_phone || 'N/A',
+        formattedDate,
+        formattedTime,
+        cleanDocName,
+        formattedDeptName,
+        displayStatus
+      ];
+    });
+    
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    
+    const finalFileName = (fileNameInput || `nemcare_appointments_${getTodayDateString()}`).trim();
+    const cleanFileName = finalFileName.endsWith('.csv') ? finalFileName : `${finalFileName}.csv`;
+    link.setAttribute('download', cleanFileName);
+    
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    success('Appointments exported successfully.');
+  };
 
   // Filter Doctors by selected department in the booking form
   const filteredDoctors = bookingDeptId
@@ -382,20 +407,10 @@ const Appointments = () => {
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">Appointments Dashboard</h1>
           <p className="text-slate-400 text-xs mt-1">Schedule and review patient appointments, manage status overrides.</p>
         </div>
-        <button
-          onClick={() => {
-            resetForm();
-            setIsModalOpen(true);
-          }}
-          className="bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-md shadow-red-950/10 transition-all duration-300 cursor-pointer self-start sm:self-center"
-        >
-          <FiPlus className="text-sm" />
-          Book Appointment (Admin Side)
-        </button>
       </div>
 
-      {/* Numerical Stats Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      {/* Numerical Stats Summary & Quick Action Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-2xl border border-slate-100/30 p-4.5 flex items-center gap-3.5 shadow-sm">
           <div className="p-2.5 rounded-xl border bg-indigo-50 border-indigo-100/30 text-indigo-650 flex items-center justify-center shrink-0">
             <FiCalendar className="text-base" />
@@ -425,55 +440,202 @@ const Appointments = () => {
             <h3 className="text-xl font-black text-slate-800 tracking-tight mt-0.5">{cancelledBookings}</h3>
           </div>
         </div>
+
+        {/* Clickable Quick Action Card: Book Appointment */}
+        <div 
+          onClick={() => {
+            resetForm();
+            setIsModalOpen(true);
+          }}
+          className="bg-[#960c0c] hover:bg-[#800a0a] rounded-2xl border border-[#960c0c] p-4.5 flex items-center gap-3.5 shadow-sm cursor-pointer hover:shadow-lg transition-all duration-200 group"
+        >
+          <div className="p-2.5 rounded-xl border bg-white/10 border-white/20 text-white flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300">
+            <FiPlus className="text-base font-bold" />
+          </div>
+          <div>
+            <p className="text-[9.5px] font-extrabold text-white/70 uppercase tracking-widest">Quick Booking</p>
+            <h3 className="text-sm font-black text-white tracking-tight mt-0.5">
+              Book Appointment
+            </h3>
+          </div>
+        </div>
       </div>
 
       {/* Appointments Data Table */}
       <div className="bg-white rounded-3xl border border-slate-100/20 p-6 md:p-7 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
-        <h3 className="text-base font-bold text-slate-800 tracking-tight mb-4">Scheduled Patient Visits</h3>
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <h3 className="text-base font-bold text-slate-800 tracking-tight">Scheduled Patient Visits</h3>
+          <button
+            onClick={() => {
+              setExportFileName(`nemcare_appointments_${getTodayDateString()}`);
+              setIsExportModalOpen(true);
+            }}
+            className="px-3 py-2 border border-slate-200 text-slate-650 hover:text-[#960c0c] hover:bg-slate-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10.5px] font-extrabold"
+            title="Export filtered list as CSV"
+          >
+            <FiFileText className="text-xs" /> Export to Excel
+          </button>
+        </div>
+
+        {/* Dynamic Filters Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Department Filter */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Filter Department</label>
+            <select
+              value={filterDeptId}
+              onChange={(e) => {
+                setFilterDeptId(e.target.value);
+                setFilterDocId(''); // reset doctor filter if department changes
+              }}
+              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2.5 text-xs text-slate-705 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
+            >
+              <option value="">All Departments</option>
+              {departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Doctor Filter */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Filter Doctor</label>
+            <select
+              value={filterDocId}
+              onChange={(e) => setFilterDocId(e.target.value)}
+              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2.5 text-xs text-slate-705 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
+            >
+              <option value="">All Doctors</option>
+              {(filterDeptId 
+                ? doctors.filter(d => d.department_id === Number(filterDeptId))
+                : doctors
+              ).map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  Dr. {doc.name.replace(/^Dr\.\s+/i, '')}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Filter Date</label>
+            <div className="relative flex items-center">
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
+              />
+              {filterDate && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDate('')}
+                  className="absolute right-2.5 text-slate-400 hover:text-rose-600 transition"
+                  title="Clear Date"
+                >
+                  <FiX className="text-sm cursor-pointer" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Search Box */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Search Patient</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search name, email, phone..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="w-full border border-slate-200 bg-slate-50/70 rounded-xl pl-8 pr-8 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
+              />
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400">
+                <FiSearch className="text-xs" />
+              </span>
+              {filterSearch && (
+                <button
+                  type="button"
+                  onClick={() => setFilterSearch('')}
+                  className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                >
+                  <FiX className="text-sm cursor-pointer" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Full-width dashed divider */}
+        <div className="border-b border-dashed border-slate-200 -mx-6 md:-mx-7 mb-6" />
 
         {loading ? (
           <p className="text-xs text-slate-400 animate-pulse py-6">Loading schedules...</p>
-        ) : appointments.length === 0 ? (
+        ) : filteredAppointments.length === 0 ? (
           <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            <p className="text-xs text-slate-400">No appointments scheduled. Click 'Book Appointment' to add one.</p>
+            <p className="text-xs text-slate-455 font-medium">
+              {appointments.length === 0 
+                ? "No appointments scheduled. Click 'Book Appointment' to add one."
+                : "No appointments match the selected filters."
+              }
+            </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <>
+            <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border border-slate-200 border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[9px]">
-                  <th className="py-3 px-4 pl-5">Patient Name</th>
-                  <th className="py-3 px-4">Contact Info</th>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Time Slots</th>
-                  <th className="py-3 px-4">Doctor / Specialty</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right pr-6">Action</th>
+                <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-extrabold uppercase tracking-wider text-[9px]">
+                  <th className="py-3 px-4 text-center w-24 border-r border-slate-200">Booking ID</th>
+                  <th className="py-3 px-4 pl-5 border-r border-slate-200">Patient Name</th>
+                  <th className="py-3 px-4 border-r border-slate-200">Contact Info</th>
+                  <th className="py-3 px-4 border-r border-slate-200">Date</th>
+                  <th className="py-3 px-4 border-r border-slate-200">Time Slots</th>
+                  <th className="py-3 px-4 border-r border-slate-200">Doctor / Specialty</th>
+                  <th className="py-3 px-4 border-r border-slate-200 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {appointments.map((app) => (
-                  <tr key={app.id} className="hover:bg-slate-50/50 transition-colors duration-150 border-b border-slate-100/50 text-slate-600 font-medium">
-                    <td className="py-4 px-4 pl-5 font-bold text-slate-800">
+                {paginatedAppointments.map((app, idx) => (
+                  <tr key={app.id} className="hover:bg-slate-50/40 transition-colors duration-150 border-b border-slate-200 text-slate-600 font-medium">
+                    {/* Booking ID */}
+                    <td className="py-3.5 px-4 text-center border-r border-slate-200 font-mono font-bold text-slate-600">
+                      #{String(app.id).padStart(4, '0')}
+                    </td>
+
+                    {/* Patient Name */}
+                    <td className="py-3.5 px-4 pl-5 font-bold text-slate-800 border-r border-slate-200">
                       {app.patient_name}
                     </td>
-                    <td className="py-4 px-4 text-slate-500">
+
+                    {/* Contact Info */}
+                    <td className="py-3.5 px-4 text-slate-500 border-r border-slate-200">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] text-slate-400 font-semibold">{app.patient_email}</span>
                         <span>{app.patient_phone}</span>
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-slate-400">
+
+                    {/* Date */}
+                    <td className="py-3.5 px-4 text-slate-500 border-r border-slate-200 font-semibold">
                       {new Date(app.date).toLocaleDateString('en-GB', {
                         day: '2-digit',
                         month: 'short',
                         year: 'numeric',
                       })}
                     </td>
-                    <td className="py-4 px-4 font-mono font-bold text-slate-600">
+
+                    {/* Time Slots */}
+                    <td className="py-3.5 px-4 font-mono font-bold text-slate-600 border-r border-slate-200">
                       {formatSlotRange(app.start_time, app.end_time)}
                     </td>
-                    <td className="py-4 px-4">
+
+                    {/* Doctor */}
+                    <td className="py-3.5 px-4 border-r border-slate-200">
                       {(() => {
                         const matchedDoc = doctors.find(d => Number(d.id) === Number(app.doctor_id));
                         const rawName = app.doctor?.name || matchedDoc?.name || '';
@@ -494,7 +656,9 @@ const Appointments = () => {
                         );
                       })()}
                     </td>
-                    <td className="py-4 px-4 text-center">
+
+                    {/* Status */}
+                    <td className="py-3.5 px-4 text-center border-r border-slate-200">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${app.status === 'booked'
                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/10'
                         : 'bg-slate-150 text-slate-450 border border-slate-200/50'
@@ -502,7 +666,9 @@ const Appointments = () => {
                         {app.status === 'booked' ? 'Active' : 'Cancelled'}
                       </span>
                     </td>
-                    <td className="py-4 px-4 text-right pr-6">
+
+                    {/* Action */}
+                    <td className="py-3.5 px-4 text-center">
                       {app.status === 'booked' ? (
                         <button
                           onClick={() => handleCancelBooking(app.id)}
@@ -519,6 +685,59 @@ const Appointments = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 mt-4">
+              <span className="text-[11px] text-slate-450 font-medium">
+                Showing <span className="font-bold text-slate-700">{Math.min((currentPage - 1) * itemsPerPage + 1, filteredAppointments.length)}</span> to{' '}
+                <span className="font-bold text-slate-700">{Math.min(currentPage * itemsPerPage, filteredAppointments.length)}</span> of{' '}
+                <span className="font-bold text-slate-700">{filteredAppointments.length}</span> appointments
+              </span>
+
+              <div className="flex items-center gap-1.5">
+                {/* Prev Button */}
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  className="p-2 border border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 disabled:hover:bg-transparent rounded-lg transition duration-200 cursor-pointer shrink-0 disabled:cursor-not-allowed"
+                >
+                  <FiChevronLeft className="text-xs" />
+                </button>
+
+                {/* Page Numbers */}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  const isActive = currentPage === page;
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`h-7 w-7 text-xs font-bold rounded-lg transition duration-200 flex items-center justify-center cursor-pointer ${
+                        isActive
+                          ? 'bg-[#960c0c] text-white shadow-3xs'
+                          : 'border border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-800'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+
+                {/* Next Button */}
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  className="p-2 border border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 disabled:hover:bg-transparent rounded-lg transition duration-200 cursor-pointer shrink-0 disabled:cursor-not-allowed"
+                >
+                  <FiChevronRight className="text-xs" />
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 
@@ -718,6 +937,91 @@ const Appointments = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Export Confirmation Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-md w-full p-6 md:p-8 space-y-6 animate-fade-in">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                <FiFileText className="text-[#960c0c]" /> Export Appointments
+              </h3>
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
+              >
+                <FiX className="text-lg" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-4">
+              <p className="text-xs text-slate-605 leading-relaxed font-medium">
+                Are you sure you want to export the filtered appointments list to an Excel-compatible CSV file?
+              </p>
+
+              {/* Custom File Name Input */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">File Name (.csv)</label>
+                <input
+                  type="text"
+                  value={exportFileName}
+                  onChange={(e) => setExportFileName(e.target.value)}
+                  placeholder="e.g. appointments_report"
+                  className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 font-bold"
+                />
+              </div>
+
+              {/* Export Summary Table */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Export Parameters</h4>
+                
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-medium text-slate-655">
+                  <div>Total Records:</div>
+                  <div className="font-bold text-slate-800">{filteredAppointments.length}</div>
+                  
+                  <div>Department:</div>
+                  <div className="font-bold text-slate-800 truncate">
+                    {filterDeptId ? (departments.find(d => Number(d.id) === Number(filterDeptId))?.name || 'Selected') : 'All Departments'}
+                  </div>
+                  
+                  <div>Doctor:</div>
+                  <div className="font-bold text-slate-800 truncate">
+                    {filterDocId ? `Dr. ${(doctors.find(d => Number(d.id) === Number(filterDocId))?.name || 'Selected').replace(/^Dr\.\s+/i, '')}` : 'All Doctors'}
+                  </div>
+                  
+                  <div>Selected Date:</div>
+                  <div className="font-bold text-slate-800">
+                    {filterDate ? new Date(filterDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'All Dates'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer"
+              >
+                No, Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportToExcel(exportFileName);
+                  setIsExportModalOpen(false);
+                }}
+                className="bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer"
+              >
+                Yes, Export
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -33,6 +33,14 @@ const Header = ({ toggleSidebar }) => {
     currentTitle = 'Admin Profile';
   } else if (path === '/signup') {
     currentTitle = 'Register Admin';
+  } else if (path === '/departments') {
+    currentTitle = 'All Departments';
+  } else if (path === '/departments/new') {
+    currentTitle = 'Add Department';
+  } else if (path === '/doctors') {
+    currentTitle = 'All Doctors';
+  } else if (path === '/doctors/new') {
+    currentTitle = 'Add Doctor';
   }
 
   return (
