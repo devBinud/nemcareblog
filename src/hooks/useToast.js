@@ -1,22 +1,36 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import Swal from 'sweetalert2';
 
 const useToast = () => {
-  const [toasts, setToasts] = useState([]);
-
-  const addToast = useCallback((message, type = 'info') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
+  const success = useCallback((msg) => {
+    Swal.fire({
+      title: 'Success!',
+      text: msg,
+      icon: 'success',
+      confirmButtonColor: '#960c0c'
+    });
   }, []);
 
-  const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const error = useCallback((msg) => {
+    Swal.fire({
+      title: 'Error!',
+      text: msg,
+      icon: 'error',
+      confirmButtonColor: '#960c0c'
+    });
   }, []);
 
-  const success = useCallback((msg) => addToast(msg, 'success'), [addToast]);
-  const error = useCallback((msg) => addToast(msg, 'error'), [addToast]);
-  const info = useCallback((msg) => addToast(msg, 'info'), [addToast]);
+  const info = useCallback((msg) => {
+    Swal.fire({
+      title: 'Notification',
+      text: msg,
+      icon: 'info',
+      confirmButtonColor: '#960c0c'
+    });
+  }, []);
 
-  return { toasts, removeToast, success, error, info };
+  return { toasts: [], removeToast: () => {}, success, error, info };
 };
 
 export default useToast;
+

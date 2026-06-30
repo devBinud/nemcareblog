@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+
 import { FiLayers, FiSearch } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
@@ -49,9 +51,17 @@ const AllDepartments = () => {
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Active Clinical Departments</h1>
-        <p className="text-slate-400 text-xs mt-1">Review active clinical departments within the hospital booking system.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Active Clinical Departments</h1>
+          <p className="text-slate-400 text-xs mt-1">Review active clinical departments within the hospital booking system.</p>
+        </div>
+        <Link
+          to="/departments/new"
+          className="px-4 py-2.5 bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 shadow-md shadow-red-950/10 cursor-pointer w-fit"
+        >
+          <FiLayers className="text-sm" /> Add Department
+        </Link>
       </div>
 
       {/* Active Departments Table Container */}

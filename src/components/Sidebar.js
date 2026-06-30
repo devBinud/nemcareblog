@@ -5,24 +5,23 @@ import Logo from '../assets/img/logo.png'; // Adjust the path based on your proj
 
 const Sidebar = ({ closeSidebar }) => {
   const linkClasses = ({ isActive }) =>
-    `relative flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-300 ease-in-out font-bold text-[12.5px] group ${isActive
-      ? 'bg-[#960c0c]/8 text-[#960c0c]'
-      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+    `relative flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-300 ease-in-out font-semibold text-[12.5px] group ${isActive
+      ? 'bg-[#960c0c]/5 text-[#960c0c]'
+      : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50/50'
     }`;
 
   return (
-    <div className="h-full flex flex-col justify-between p-5 bg-white border-r border-slate-100">
-      <div>
-        {/* Brand/Logo Header */}
-        <div className="flex flex-col items-center justify-center mb-6 border-b border-slate-100/80">
-          <img src={Logo} alt="Nemcare Logo" className="h-14 object-contain mb-1" />
-        </div>
+    <div className="h-full flex flex-col p-5 bg-[#fcfdfd] border-r border-slate-100/60">
+      {/* Brand/Logo Header — always visible at top */}
+      <div className="flex flex-col items-center justify-center mb-6 border-b border-slate-100/40 shrink-0">
+        <img src={Logo} alt="Nemcare Logo" className="h-14 object-contain mb-1" />
+      </div>
 
-        {/* Navigation Links */}
-        <div className="flex flex-col gap-6">
+      {/* Scrollable Navigation Links */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-6 pr-0.5 scrollbar-thin">
           {/* Appointment System Section */}
           <div>
-            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest block px-4 mb-2.5">
+            <span className="text-[9.5px] font-semibold text-slate-400/80 uppercase tracking-widest block px-4 mb-2.5">
               Appointment System
             </span>
             <nav className="flex flex-col gap-1">
@@ -108,7 +107,7 @@ const Sidebar = ({ closeSidebar }) => {
 
           {/* Main Sections */}
           <div>
-            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest block px-4 mb-2.5">
+            <span className="text-[9.5px] font-semibold text-slate-400/80 uppercase tracking-widest block px-4 mb-2.5">
               Overview
             </span>
             <nav className="flex flex-col gap-1">
@@ -161,7 +160,7 @@ const Sidebar = ({ closeSidebar }) => {
 
           {/* Admin Sections */}
           <div>
-            <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest block px-4 mb-2.5">
+            <span className="text-[9.5px] font-semibold text-slate-400/80 uppercase tracking-widest block px-4 mb-2.5">
               Management
             </span>
             <nav className="flex flex-col gap-1">
@@ -179,10 +178,9 @@ const Sidebar = ({ closeSidebar }) => {
             </nav>
           </div>
         </div>
-      </div>
 
-      {/* Admin Profile Widget at bottom */}
-      <div className="pt-4 border-t border-slate-100 flex items-center gap-3 bg-slate-50/40 p-2.5 rounded-xl border border-slate-100/50 hover:bg-slate-50 transition-colors duration-300">
+      {/* Admin Profile Widget — pinned at bottom, always visible */}
+      <div className="shrink-0 mt-4 pt-4 border-t border-slate-100 flex items-center gap-3 bg-slate-50/40 p-2.5 rounded-xl border border-slate-100/50 hover:bg-slate-50 transition-colors duration-300">
         <div className="h-9 w-9 rounded-xl bg-[#960c0c]/10 text-[#960c0c] flex items-center justify-center font-black text-xs shadow-3xs">
           A
         </div>

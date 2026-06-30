@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+
 import { FiPlus, FiLayers } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
@@ -47,13 +49,21 @@ const AddDepartment = () => {
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Clinical Departments</h1>
-        <p className="text-slate-400 text-xs mt-1">Configure and add new clinical departments within the medical center.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Clinical Departments</h1>
+          <p className="text-slate-400 text-xs mt-1">Configure and add new clinical departments within the medical center.</p>
+        </div>
+        <Link
+          to="/departments"
+          className="px-4 py-2.5 bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 shadow-md shadow-red-950/10 cursor-pointer w-fit"
+        >
+          <FiLayers className="text-sm" /> All Departments
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-2">
           <div className="bg-white rounded-3xl border border-slate-100/20 p-6 md:p-7 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
             <h3 className="text-base font-bold text-slate-800 tracking-tight mb-4 flex items-center gap-2">
               <FiLayers className="text-[#960c0c]" /> Add Department

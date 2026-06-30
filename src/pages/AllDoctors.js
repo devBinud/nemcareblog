@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+
 import {
   FiSearch, FiClock, FiTrash2,
   FiEdit2, FiBriefcase, FiX, FiCheck, FiBookOpen, FiInfo
@@ -262,9 +264,17 @@ const AllDoctors = () => {
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Doctors</h1>
-        <p className="text-slate-400 text-xs mt-1">Review active doctors, modify details, and configure master booking slots.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Doctors</h1>
+          <p className="text-slate-400 text-xs mt-1">Review active doctors, modify details, and configure master booking slots.</p>
+        </div>
+        <Link
+          to="/doctors/new"
+          className="px-4 py-2.5 bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 shadow-md shadow-red-950/10 cursor-pointer w-fit"
+        >
+          <FiBriefcase className="text-sm" /> Add Doctor
+        </Link>
       </div>
 
       {/* Search and Controls */}

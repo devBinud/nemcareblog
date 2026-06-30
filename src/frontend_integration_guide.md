@@ -196,8 +196,10 @@ This guide outlines the logical flow, endpoints, request payloads, and query par
     "slot_id": 1,
     "date": "2026-06-15",
     "patient_name": "John Doe",
-    "patient_email": "john@example.com", // Optional
-    "patient_phone": "1234567890"        // Optional
+    "patient_email": "john@example.com",  // Optional
+    "patient_phone": "1234567890",        // Optional
+    "patient_type": "existing",           // Optional: "new" (default) or "existing"
+    "uhid": "UHID123456"                  // Required if patient_type is "existing"
   }
   ```
 
