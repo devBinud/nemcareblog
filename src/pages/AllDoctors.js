@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom';
 
 import {
   FiSearch, FiClock, FiTrash2,
-  FiEdit2, FiBriefcase, FiX, FiCheck, FiBookOpen, FiInfo
+  FiEdit2, FiBriefcase, FiX, FiCheck, FiBookOpen, FiInfo, FiEye
 } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
+
 
 const formatTimeTo12Hour = (timeStr) => {
   if (!timeStr) return '';
@@ -54,6 +55,10 @@ const AllDoctors = () => {
   const [editAchievements, setEditAchievements] = useState('');
   const [submittingEdit, setSubmittingEdit] = useState(false);
 
+  // View Details Modal States
+  const [viewingDoc, setViewingDoc] = useState(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+
   // Slot Assignment Modal States
   const [slotAssignDoc, setSlotAssignDoc] = useState(null);
   const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
@@ -96,6 +101,12 @@ const AllDoctors = () => {
   }, [fetchData]);
 
 
+
+  // Open View Modal
+  const openViewModal = (doc) => {
+    setViewingDoc(doc);
+    setIsViewModalOpen(true);
+  };
 
   // Open Edit Modal
   const openEditModal = (doc) => {
@@ -354,6 +365,15 @@ const AllDoctors = () => {
                       {/* Actions */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2 justify-center">
+                          {/* View */}
+                          <button
+                            onClick={() => openViewModal(doc)}
+                            className="px-2.5 py-1.5 border border-slate-200 text-slate-655 hover:text-[#960c0c] hover:bg-red-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
+                            title="View Doctor Details"
+                          >
+                            <FiEye className="text-xs" /> View
+                          </button>
+
                           {/* Slots */}
                           <button
                             onClick={() => openSlotsModal(doc)}
@@ -390,6 +410,149 @@ const AllDoctors = () => {
           </div>
         </div>
       )}
+
+      {/* View Doctor Details Modal */}
+      {isViewModalOpen && viewingDoc && (() => {
+        const deptName = viewingDoc.department?.name || departments.find(d => d.id === viewingDoc.department_id)?.name || 'Clinical Specialist';
+        const docSlots = masterSlots.filter(slot => viewingDoc.slot_ids?.includes(slot.id));
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6 animate-fade-in">
+
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                  <FiEye className="text-[#960c0c]" /> Doctor Details
+                </h3>
+                <button
+                  onClick={() => setIsViewModalOpen(false)}
+                  className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <FiX className="text-lg" />
+                </button>
+              </div>
+
+              {/* Profile Card Header */}
+              <div className="bg-slate-50/50 rounded-2xl p-5 border border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-[#960c0c]/10 text-[#960c0c] flex items-center justify-center font-black text-lg shadow-sm border border-[#960c0c]/20">
+                    {viewingDoc.name ? viewingDoc.name.replace(/^Dr\.\s+/i, '').substring(0, 2).toUpperCase() : 'DR'}
+                  </div>
+                  <div>
+                    <h4 className="text-base font-black text-slate-800">
+                      Dr. {viewingDoc.name?.replace(/^Dr\.\s+/i, '')}
+                    </h4>
+                    <p className="text-xs font-semibold text-slate-500 mt-0.5">{viewingDoc.designation}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className="inline-block px-2.5 py-0.5 rounded-lg text-[9px] font-bold bg-[#960c0c]/5 text-[#960c0c] border border-[#960c0c]/10">
+                        {deptName}
+                      </span>
+                      {viewingDoc.experience_years && (
+                        <span className="inline-block px-2.5 py-0.5 rounded-lg text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          {viewingDoc.experience_years} Years Experience
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* Left Column: Contact & Core Details */}
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Specialty</h5>
+                    <p className="text-xs text-slate-750 font-bold bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50">
+                      {viewingDoc.specialty || 'Not specified'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Contact Email</h5>
+                    <p className="text-xs text-slate-750 font-bold bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50 truncate">
+                      {viewingDoc.contact_email || 'Not specified'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Education & Degrees</h5>
+                    <p className="text-xs text-slate-750 font-bold bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50 whitespace-pre-line">
+                      {viewingDoc.education || 'Not specified'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Areas of Expertise</h5>
+                    <p className="text-xs text-slate-750 font-bold bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50">
+                      {viewingDoc.areas_of_expertise || 'Not specified'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right Column: Experience, Bio, Achievements */}
+                <div className="space-y-4">
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Professional Biography</h5>
+                    <div className="text-xs text-slate-700 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50 min-h-[76px] leading-relaxed whitespace-pre-line">
+                      {viewingDoc.bio || 'No biography available.'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Previous Experience</h5>
+                    <div className="text-xs text-slate-700 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50 min-h-[76px] leading-relaxed whitespace-pre-line">
+                      {viewingDoc.previous_experience || 'No previous experience listed.'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h5 className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">Achievements</h5>
+                    <p className="text-xs text-slate-750 font-bold bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-100/50">
+                      {viewingDoc.achievements || 'Not specified'}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Weekly Active Slots */}
+              <div className="pt-4 border-t border-slate-100">
+                <h5 className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider block">Weekly Booking Slots</h5>
+                {docSlots.length === 0 ? (
+                  <p className="text-xs text-slate-450 italic bg-slate-50 rounded-xl px-4 py-3 border border-slate-100/50">No weekly active booking slots assigned.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {docSlots.map(slot => (
+                      <span
+                        key={slot.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#960c0c]/5 hover:bg-[#960c0c]/8 text-[#960c0c] border border-[#960c0c]/15 text-xs font-bold rounded-xl"
+                      >
+                        <FiClock className="text-xs" />
+                        {formatSlotRange(slot.start_time, slot.end_time)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Close Button */}
+              <div className="flex items-center justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsViewModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition duration-200 cursor-pointer shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit Doctor Profile Modal */}
       {isEditModalOpen && editingDoc && (
