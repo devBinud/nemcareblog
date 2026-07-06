@@ -140,8 +140,7 @@ Submit the chosen slot, date, doctor, patient contact details, patient type, and
     "patient_email": "john@example.com", // Optional
     "patient_phone": "1234567890", // Must be exactly 10 digits
     "patient_type": "existing", // "new" or "existing"
-    "uhid": "UHID12345", // Required only if patient_type is "existing"
-    "symptoms": "Fever and headache for 2 days" // Optional
+    "uhid": "UHID12345" // Required only if patient_type is "existing"
   }
   ```
 
@@ -160,8 +159,7 @@ Submit the chosen slot, date, doctor, patient contact details, patient type, and
       "slab_start_time": "10:15",
       "slab_end_time": "10:30",
       "date": "2026-06-15",
-      "status": "booked",
-      "symptoms": "Fever and headache for 2 days"
+      "status": "booked"
     }
   }
   ```
@@ -179,8 +177,7 @@ Add this styling and script directly to your PHP/HTML template to load options d
   .appointment-form { max-width: 600px; margin: 0 auto; font-family: sans-serif; }
   .form-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 6px; }
   .form-group label { font-size: 12px; font-weight: bold; color: #475569; text-transform: uppercase; }
-  .form-group input, .form-group select, .form-group textarea { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
-  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-group input, .form-group select { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
   .radio-group { display: flex; gap: 15px; margin: 5px 0; }
   .radio-option { display: flex; items-center: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
   
@@ -193,7 +190,7 @@ Add this styling and script directly to your PHP/HTML template to load options d
   .slab-chip { display: flex; align-items: center; justify-content: center; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: bold; background: #f8fafc; transition: all 0.2s; cursor: pointer; position: relative; }
   .slab-chip input { position: absolute; opacity: 0; pointer-events: none; }
   .slab-chip.selected { background: #fee2e2; border-color: #960c0c; color: #960c0c; }
-  .slab-chip.booked, .slab-chip.disabled { opacity: 0.6; background: #e2e8f0; border-color: #cbd5e1; color: #64748b; cursor: not-allowed; }
+  .slab-chip.booked { opacity: 0.6; background: #e2e8f0; border-color: #cbd5e1; color: #64748b; cursor: not-allowed; }
   
   .hidden { display: none !important; }
   .error-text { color: #dc2626; font-size: 12px; font-weight: bold; }
@@ -272,12 +269,6 @@ Add this styling and script directly to your PHP/HTML template to load options d
   <div class="form-group">
     <label for="patient_email">Email Address (Optional)</label>
     <input type="email" id="patient_email">
-  </div>
-  
-  <!-- 9. Symptoms / Notes -->
-  <div class="form-group">
-    <label for="symptoms">Symptoms / Notes (Optional)</label>
-    <textarea id="symptoms" placeholder="Describe symptoms or add notes..." rows="3"></textarea>
   </div>
 
   <button type="submit" id="submitBtn">Book Appointment</button>
@@ -392,16 +383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         const res = await fetch(`${BASE_URL}/doctors/${doctorId}/slots?date=${date}`);
         const result = await res.json();
-        const rawSlots = (result.data || result).slots || [];
-
-        // Disable and tag slots that have already passed
-        availableSlots = rawSlots.map(slot => {
-          const isPast = isTimeInPast(date, slot.start_time);
-          if (isPast) {
-            return { ...slot, available: false, is_past: true };
-          }
-          return slot;
-        });
+        availableSlots = (result.data || result).slots || [];
 
         if (availableSlots.length === 0) {
           hoursContainer.innerHTML = '<p class="error-text">No slots operational on this date.</p>';
@@ -431,27 +413,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         hoursContainer.innerHTML = '';
         groupsArray.forEach(group => {
-          // Check if all slabs in this hour group are booked, past, or unavailable
-          const isGroupUnavailable = group.slabs.every(s => s.is_booked || s.is_past || !s.available);
-
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'slot-btn';
           btn.textContent = `${formatTimeTo12Hour(group.master_start_time)} - ${formatTimeTo12Hour(group.master_end_time)}`;
-          
-          if (isGroupUnavailable) {
-            btn.disabled = true;
-            btn.style.opacity = '0.5';
-            btn.style.cursor = 'not-allowed';
-            btn.style.background = '#e2e8f0';
-            btn.style.color = '#94a3b8';
-          } else {
-            btn.addEventListener('click', () => {
-              document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
-              btn.classList.add('active');
-              displaySlabs(group.master_slot_id);
-            });
-          }
+          btn.addEventListener('click', () => {
+            document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            displaySlabs(group.master_slot_id);
+          });
           hoursContainer.appendChild(btn);
         });
 
@@ -469,20 +439,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const slabs = groupedSlots[masterId]?.slabs || [];
       slabs.forEach(slab => {
         const isBooked = slab.is_booked || !slab.available;
-        const isPast = slab.is_past;
-        const isUnavailable = isBooked || isPast;
-
         const chip = document.createElement('label');
-        chip.className = `slab-chip ${isUnavailable ? 'disabled' : ''}`;
+        chip.className = `slab-chip ${isBooked ? 'booked' : ''}`;
         
         const radio = document.createElement('input');
         radio.type = 'radio';
         radio.name = 'selected_slab_id';
         radio.value = slab.id;
-        radio.disabled = isUnavailable;
+        radio.disabled = isBooked;
         radio.required = true;
 
-        // Show Booked text but NOT Passed text (passed slots are simply disabled)
         const timeLabel = document.createElement('span');
         timeLabel.innerHTML = `${formatTimeTo12Hour(slab.start_time)} - ${formatTimeTo12Hour(slab.end_time)} ${isBooked ? '<br><small style="color:red">(Booked)</small>' : ''}`;
 
@@ -507,27 +473,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const ampm = hour >= 12 ? 'PM' : 'AM';
       const displayHour = hour % 12 === 0 ? 12 : hour % 12;
       return `${displayHour}:${parts[1]} ${ampm}`;
-    }
-
-    // Time check helper to see if slot has passed
-    function isTimeInPast(dateStr, timeStr) {
-      if (!timeStr) return false;
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const todayStr = `${year}-${month}-${day}`;
-
-      if (dateStr === todayStr) {
-        const currentHour = now.getHours();
-        const currentMin = now.getMinutes();
-
-        const [slotHour, slotMin] = timeStr.split(':').map(Number);
-
-        if (slotHour < currentHour) return true;
-        if (slotHour === currentHour && slotMin < currentMin) return true;
-      }
-      return false;
     }
 
     // 5. Submit Booking Form
@@ -560,8 +505,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         patient_phone: document.getElementById('patient_phone').value.trim(),
         patient_email: document.getElementById('patient_email').value.trim() || undefined,
         patient_type: patientType,
-        uhid: patientType === 'existing' ? uhidValue : undefined,
-        symptoms: document.getElementById('symptoms').value.trim() || undefined
+        uhid: patientType === 'existing' ? uhidValue : undefined
       };
 
       try {

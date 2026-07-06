@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload } from 'react-icons/fi';
+import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload, FiEye } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -36,6 +36,22 @@ const formatSlotRange = (start, end) => {
   return `${formatTimeTo12Hour(start)} - ${formatTimeTo12Hour(end)}`;
 };
 
+const isTimeInPast = (dateStr, timeStr) => {
+  if (!timeStr) return false;
+  const todayStr = getTodayDateString();
+  if (dateStr === todayStr) {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMin = now.getMinutes();
+
+    const [slotHour, slotMin] = timeStr.split(':').map(Number);
+
+    if (slotHour < currentHour) return true;
+    if (slotHour === currentHour && slotMin < currentMin) return true;
+  }
+  return false;
+};
+
 const Appointments = () => {
   const { toasts, removeToast, success } = useToast();
 
@@ -62,6 +78,7 @@ const Appointments = () => {
   const [patientPhone, setPatientPhone] = useState('');
   const [patientType, setPatientType] = useState('new');
   const [uhid, setUhid] = useState('');
+  const [symptoms, setSymptoms] = useState('');
 
   // Available slots for selected doc/date
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -161,8 +178,13 @@ const Appointments = () => {
               (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
               app.status === 'booked'
             );
+            const isPast = isTimeInPast(bookingDate, s.start_time);
+
             if (isLocalBooked) {
               return { ...s, available: false, is_booked: true };
+            }
+            if (isPast) {
+              return { ...s, available: false, is_past: true };
             }
             return s;
           });
@@ -337,6 +359,33 @@ const Appointments = () => {
     }
   };
 
+  // View Symptoms / Notes SweetAlert Popup
+  const handleViewSymptoms = (app) => {
+    MySwal.fire({
+      title: `<span class="text-[#960c0c] font-black tracking-tight">Patient Symptoms & Notes</span>`,
+      html: `
+        <div class="text-left space-y-3 font-sans text-xs">
+          <div class="border-b border-dashed border-slate-200 pb-2 mb-2">
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Patient Name</p>
+            <p class="text-slate-800 font-bold">${app.patient_name}</p>
+          </div>
+          <div>
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Symptoms / Notes</p>
+            <p class="text-slate-750 bg-slate-50/50 border border-dashed border-slate-200 p-3.5 rounded-xl leading-relaxed whitespace-pre-wrap mt-1">
+              ${app.symptoms || '<em class="text-slate-400">No notes or symptoms provided.</em>'}
+            </p>
+          </div>
+        </div>
+      `,
+      confirmButtonText: 'Close',
+      confirmButtonColor: '#960c0c',
+      customClass: {
+        popup: 'rounded-3xl border border-slate-200/50 shadow-2xl p-6 md:p-8',
+        confirmButton: 'px-6 py-2.5 rounded-xl text-xs font-bold transition duration-200 shadow-3xs cursor-pointer'
+      }
+    });
+  };
+
   // Submit Booking
   const handleBookAppointment = async (e) => {
     e.preventDefault();
@@ -396,7 +445,8 @@ const Appointments = () => {
           patient_email: patientEmail || undefined,
           patient_phone: patientPhone || undefined,
           patient_type: patientType,
-          uhid: patientType === 'existing' ? uhid : undefined
+          uhid: patientType === 'existing' ? uhid : undefined,
+          symptoms: symptoms.trim() || undefined
         }),
       });
 
@@ -437,6 +487,7 @@ const Appointments = () => {
     setPatientPhone('');
     setPatientType('new');
     setUhid('');
+    setSymptoms('');
     setAvailableSlots([]);
   };
 
@@ -522,6 +573,7 @@ const Appointments = () => {
         formattedTime,
         cleanDocName,
         formattedDeptName,
+        app.symptoms || '',
         displayStatus
       ];
     });
@@ -529,7 +581,7 @@ const Appointments = () => {
 
   // Export filtered appointments to CSV (Excel compatible)
   const handleExportToExcel = (fileNameInput) => {
-    const headers = ['Booking ID', 'Patient Name', 'Patient Type', 'UHID', 'Email', 'Phone', 'Booking Date', 'Time Slot', 'Doctor', 'Department', 'Status'];
+    const headers = ['Booking ID', 'Patient Name', 'Patient Type', 'UHID', 'Email', 'Phone', 'Booking Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms / Notes', 'Status'];
     const rows = buildExportRows();
 
     const csvContent = [
@@ -577,7 +629,7 @@ const Appointments = () => {
     doc.text(`Generated: ${generatedAt}  |  Total Records: ${filteredAppointments.length}`, 297 - 14, 13, { align: 'right' });
 
     // Table
-    const headers = [['Booking ID', 'Patient Name', 'Type', 'UHID', 'Email', 'Phone', 'Date', 'Time Slot', 'Doctor', 'Department', 'Status']];
+    const headers = [['Booking ID', 'Patient Name', 'Type', 'UHID', 'Email', 'Phone', 'Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms / Notes', 'Status']];
     const rows = buildExportRows();
 
     autoTable(doc, {
@@ -607,10 +659,11 @@ const Appointments = () => {
         3: { halign: 'center', cellWidth: 18 },
         6: { halign: 'center', cellWidth: 22 },
         7: { halign: 'center', cellWidth: 26 },
-        10: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
+        10: { cellWidth: 35 },
+        11: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
       },
       didParseCell: (data) => {
-        if (data.section === 'body' && data.column.index === 10) {
+        if (data.section === 'body' && data.column.index === 11) {
           const val = data.cell.raw;
           if (val === 'ACTIVE') {
             data.cell.styles.textColor = [22, 163, 74];
@@ -944,6 +997,13 @@ const Appointments = () => {
                       {/* Action */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                          <button
+                            onClick={() => handleViewSymptoms(app)}
+                            className="text-indigo-650 hover:text-indigo-700 font-bold text-[10px] bg-indigo-50/50 hover:bg-indigo-50 px-2 py-1.5 rounded-lg border border-indigo-100/20 transition-all duration-200 inline-flex items-center gap-1 cursor-pointer"
+                            title="View Patient Symptoms & Notes"
+                          >
+                            <FiEye className="text-xs shrink-0" /> View Notes
+                          </button>
                           {app.status === 'booked' && (
                             <>
                               <button
@@ -1145,10 +1205,12 @@ const Appointments = () => {
                     <div className="grid grid-cols-2 gap-2.5 max-h-[150px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/30">
                       {groupedSlots.map((group) => {
                         const isSelected = selectedMasterId === group.master_slot_id;
+                        const isGroupUnavailable = group.slabs.every(s => s.is_booked || s.is_past || !s.available);
                         return (
                           <button
                             key={group.master_slot_id}
                             type="button"
+                            disabled={isGroupUnavailable}
                             onClick={() => {
                               setSelectedMasterId(group.master_slot_id);
                               // Reset specific 15-min slab selection if switching hours
@@ -1157,9 +1219,11 @@ const Appointments = () => {
                                 setBookingSlotId('');
                               }
                             }}
-                            className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all duration-200 select-none ${isSelected
-                              ? 'bg-slate-800 text-white border-slate-800 shadow-3xs'
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-slate-355'
+                            className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold transition-all duration-200 select-none ${isGroupUnavailable
+                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                              : isSelected
+                                ? 'bg-slate-800 text-white border-slate-800 shadow-3xs cursor-pointer'
+                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-355 cursor-pointer'
                               }`}
                           >
                             <FiCalendar className="text-[10px] shrink-0" />
@@ -1180,11 +1244,13 @@ const Appointments = () => {
                         <div className="grid grid-cols-2 gap-2 max-h-[120px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-white shadow-3xs">
                           {(groupedSlots.find(g => g.master_slot_id === selectedMasterId)?.slabs || []).map((slot) => {
                             const isSlabSelected = bookingSlotId === String(slot.id);
-                            const isBooked = slot.is_booked || !slot.available;
+                            const isBooked = slot.is_booked;
+                            const isPast = slot.is_past;
+                            const isUnavailable = isBooked || isPast || !slot.available;
                             return (
                               <label
                                 key={slot.id}
-                                className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold transition-all duration-200 select-none ${isBooked
+                                className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold transition-all duration-200 select-none ${isUnavailable
                                   ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                                   : isSlabSelected
                                     ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] cursor-pointer'
@@ -1197,8 +1263,8 @@ const Appointments = () => {
                                   value={slot.id}
                                   className="sr-only"
                                   checked={isSlabSelected}
-                                  disabled={isBooked}
-                                  onChange={(e) => !isBooked && setBookingSlotId(e.target.value)}
+                                  disabled={isUnavailable}
+                                  onChange={(e) => !isUnavailable && setBookingSlotId(e.target.value)}
                                 />
                                 <FiClock className="text-[9px] shrink-0" />
                                 <div className="flex flex-col items-center">
@@ -1325,6 +1391,17 @@ const Appointments = () => {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Symptoms / Notes (Optional)</label>
+                  <textarea
+                    placeholder="Describe symptoms or add notes..."
+                    rows="3"
+                    className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 min-h-[80px]"
+                    value={symptoms}
+                    onChange={(e) => setSymptoms(e.target.value)}
+                  />
                 </div>
               </div>
 
