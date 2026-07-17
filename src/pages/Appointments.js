@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload, FiEye } from 'react-icons/fi';
+import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload, FiEye, FiCheck, FiArrowRight, FiArrowLeft, FiCreditCard, FiSmartphone, FiShield, FiLoader } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -7,6 +7,7 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import paymentQR from '../assets/img/payment_qr.png';
 
 const MySwal = withReactContent(Swal);
 
@@ -79,6 +80,14 @@ const Appointments = () => {
   const [patientType, setPatientType] = useState('new');
   const [uhid, setUhid] = useState('');
   const [symptoms, setSymptoms] = useState('');
+
+  // Booking Wizard Steps and Mock Payment
+  const [bookingStep, setBookingStep] = useState(1); // 1, 2, 3, 4
+  const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' | 'upi' | 'cash'
+  const [cardNo, setCardNo] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardName, setCardName] = useState('');
 
   // Available slots for selected doc/date
   const [availableSlots, setAvailableSlots] = useState([]);
@@ -388,7 +397,7 @@ const Appointments = () => {
 
   // Submit Booking
   const handleBookAppointment = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!bookingDocId || !bookingSlotId || !bookingDate || !patientName.trim() || !patientPhone) {
       MySwal.fire({
         title: 'Error',
@@ -431,6 +440,26 @@ const Appointments = () => {
       return;
     }
 
+    if (paymentMethod === 'card') {
+      const cleanCardNo = cardNo.replace(/\s/g, '');
+      if (cleanCardNo.length !== 16 || !/^\d+$/.test(cleanCardNo)) {
+        MySwal.fire({ title: 'Error', text: 'Please enter a valid 16-digit card number.', icon: 'error', confirmButtonColor: '#960c0c' });
+        return;
+      }
+      if (!/^\d{2}\/\d{2}$/.test(cardExpiry)) {
+        MySwal.fire({ title: 'Error', text: 'Please enter expiry in MM/YY format.', icon: 'error', confirmButtonColor: '#960c0c' });
+        return;
+      }
+      if (cardCvv.length !== 3 || !/^\d+$/.test(cardCvv)) {
+        MySwal.fire({ title: 'Error', text: 'Please enter a valid 3-digit CVV.', icon: 'error', confirmButtonColor: '#960c0c' });
+        return;
+      }
+      if (!cardName.trim()) {
+        MySwal.fire({ title: 'Error', text: 'Please enter cardholder name.', icon: 'error', confirmButtonColor: '#960c0c' });
+        return;
+      }
+    }
+
     setSubmittingBooking(true);
     try {
       const res = await apiFetch('/appointments', {
@@ -451,15 +480,11 @@ const Appointments = () => {
       });
 
       if (res.ok) {
-        MySwal.fire({
-          title: 'Success!',
-          text: 'Appointment booked successfully!',
-          icon: 'success',
-          confirmButtonColor: '#960c0c'
-        });
-        setIsModalOpen(false);
-        resetForm();
+        setBookingStep(4);
         fetchAppointments();
+        setTimeout(() => {
+          window.location.href = 'https://preregistration.nemcare.com';
+        }, 2000);
       } else {
         const json = await res.json();
         throw new Error(json.message || 'Failed to book appointment');
@@ -489,6 +514,12 @@ const Appointments = () => {
     setUhid('');
     setSymptoms('');
     setAvailableSlots([]);
+    setBookingStep(1);
+    setPaymentMethod('card');
+    setCardNo('');
+    setCardExpiry('');
+    setCardCvv('');
+    setCardName('');
   };
 
   // Filtered Appointments list
@@ -1114,316 +1145,668 @@ const Appointments = () => {
               <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
                 <FiCalendar className="text-[#960c0c]" /> Book Patient Appointment
               </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
-              >
-                <FiX className="text-lg" />
-              </button>
+              {bookingStep < 4 && (
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <FiX className="text-lg" />
+                </button>
+              )}
             </div>
 
-            {/* Modal Content */}
-            <form onSubmit={handleBookAppointment} className="space-y-4">
-
-              {/* Doctor / Dept selection row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Departments</label>
-                  <select
-                    className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-3 text-xs text-slate-700 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                    value={bookingDeptId}
-                    onChange={(e) => {
-                      setBookingDeptId(e.target.value);
-                      setBookingDocId(''); // reset doctor
-                      setBookingSlotId(''); // reset slot
-                    }}
+            {/* Step Indicators */}
+            {bookingStep < 4 && (
+              <div className="flex items-center pb-2 border-b border-slate-100/50 w-full">
+                {/* Step 1 */}
+                <div className="flex items-center gap-1.5 pr-2 shrink-0">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
+                      bookingStep === 1
+                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                        : bookingStep > 1
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-100 text-slate-450 border border-slate-200'
+                    }`}
                   >
-                    <option value="">All Specialities</option>
-                    {departments.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        {dept.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Doctor *</label>
-                  <select
-                    className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-3 text-xs text-slate-700 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                    value={bookingDocId}
-                    onChange={(e) => {
-                      setBookingDocId(e.target.value);
-                      setBookingSlotId(''); // reset slot
-                    }}
-                    required
-                  >
-                    <option value="">Select Doctor</option>
-                    {filteredDoctors.map((doc) => (
-                      <option key={doc.id} value={doc.id}>
-                        Dr. {doc.name.replace(/^Dr\.\s+/i, '')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Date selection */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Booking Date *</label>
-                <input
-                  type="date"
-                  className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                  value={bookingDate}
-                  onChange={(e) => {
-                    setBookingDate(e.target.value);
-                    setBookingSlotId(''); // reset slot
-                  }}
-                  min={getTodayDateString()}
-                  required
-                />
-              </div>
-
-              {/* Available Slots Select Radio Chips */}
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">
-                  Select Time Slot *
-                </label>
-
-                {!bookingDocId || !bookingDate ? (
-                  <p className="text-[11px] text-slate-400 italic">Please select a doctor and date to view available time slots.</p>
-                ) : loadingFormSlots ? (
-                  <p className="text-[11px] text-slate-400 animate-pulse">Checking slot openings...</p>
-                ) : availableSlots.length === 0 ? (
-                  <div className="p-3 bg-rose-50 border border-rose-100/50 rounded-xl flex items-center gap-2">
-                    <FiInfo className="text-rose-500 text-sm" />
-                    <p className="text-[10px] text-rose-600 font-semibold">No operational slots are available on this date.</p>
+                    {bookingStep > 1 ? <FiCheck className="text-[10px]" /> : 1}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Hourly Master Slots Grid */}
-                    <div className="grid grid-cols-2 gap-2.5 max-h-[150px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/30">
-                      {groupedSlots.map((group) => {
-                        const isSelected = selectedMasterId === group.master_slot_id;
-                        const isGroupUnavailable = group.slabs.every(s => s.is_booked || s.is_past || !s.available);
-                        return (
-                          <button
-                            key={group.master_slot_id}
-                            type="button"
-                            disabled={isGroupUnavailable}
-                            onClick={() => {
-                              setSelectedMasterId(group.master_slot_id);
-                              // Reset specific 15-min slab selection if switching hours
-                              const currentSelectedSlab = availableSlots.find(s => String(s.id) === String(bookingSlotId));
-                              if (!currentSelectedSlab || currentSelectedSlab.master_slot_id !== group.master_slot_id) {
-                                setBookingSlotId('');
-                              }
-                            }}
-                            className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold transition-all duration-200 select-none ${isGroupUnavailable
-                              ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
-                              : isSelected
-                                ? 'bg-slate-800 text-white border-slate-800 shadow-3xs cursor-pointer'
-                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-355 cursor-pointer'
-                              }`}
-                          >
-                            <FiCalendar className="text-[10px] shrink-0" />
-                            <span className="text-[10px] tracking-tight text-center font-bold">
-                              {formatSlotRange(group.master_start_time, group.master_end_time)}
-                            </span>
-                          </button>
-                        );
-                      })}
+                  <span
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
+                      bookingStep === 1
+                        ? 'text-[#960c0c]'
+                        : bookingStep > 1
+                        ? 'text-emerald-500'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    Doctor & Dept
+                  </span>
+                </div>
+
+                {/* Connector Line 1 */}
+                <div className={`h-0.5 flex-grow transition-all duration-300 ${bookingStep > 1 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+
+                {/* Step 2 */}
+                <div className="flex items-center gap-1.5 px-2 shrink-0">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
+                      bookingStep === 2
+                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                        : bookingStep > 2
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-100 text-slate-450 border border-slate-200'
+                    }`}
+                  >
+                    {bookingStep > 2 ? <FiCheck className="text-[10px]" /> : 2}
+                  </div>
+                  <span
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
+                      bookingStep === 2
+                        ? 'text-[#960c0c]'
+                        : bookingStep > 2
+                        ? 'text-emerald-500'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    Details & Time
+                  </span>
+                </div>
+
+                {/* Connector Line 2 */}
+                <div className={`h-0.5 flex-grow transition-all duration-300 ${bookingStep > 2 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+
+                {/* Step 3 */}
+                <div className="flex items-center gap-1.5 pl-2 shrink-0">
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
+                      bookingStep === 3
+                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                        : bookingStep > 3
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-100 text-slate-450 border border-slate-200'
+                    }`}
+                  >
+                    {bookingStep > 3 ? <FiCheck className="text-[10px]" /> : 3}
+                  </div>
+                  <span
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
+                      bookingStep === 3
+                        ? 'text-[#960c0c]'
+                        : bookingStep > 3
+                        ? 'text-emerald-500'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    Payment
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Content */}
+            <div className="space-y-4">
+              {/* Step 1: Select Department & Doctor */}
+              {bookingStep === 1 && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Departments</label>
+                      <select
+                        className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-3 text-xs text-slate-700 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 font-semibold"
+                        value={bookingDeptId}
+                        onChange={(e) => {
+                          setBookingDeptId(e.target.value);
+                          setBookingDocId(''); // reset doctor
+                          setBookingSlotId(''); // reset slot
+                        }}
+                      >
+                        <option value="">All Specialities</option>
+                        {departments.map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    {/* 15-Minute Slabs for the Selected Hour */}
-                    {selectedMasterId && (
-                      <div className="animate-fade-in space-y-2">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                          Select 15-Minute Slab *
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Doctor *</label>
+                      <select
+                        className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-3 text-xs text-slate-700 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 font-semibold"
+                        value={bookingDocId}
+                        onChange={(e) => {
+                          setBookingDocId(e.target.value);
+                          setBookingSlotId(''); // reset slot
+                        }}
+                        required
+                      >
+                        <option value="">Select Doctor</option>
+                        {filteredDoctors.map((doc) => (
+                          <option key={doc.id} value={doc.id}>
+                            Dr. {doc.name.replace(/^Dr\.\s+/i, '')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Step 1 Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingStep(2)}
+                      disabled={!bookingDocId}
+                      className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
+                    >
+                      Next: Details & Time <FiArrowRight className="text-[11px]" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Patient Info, Slots, Symptoms */}
+              {bookingStep === 2 && (
+                <div className="space-y-4 animate-fade-in max-h-[60vh] overflow-y-auto pr-1">
+                  {/* Patient Credentials */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-slate-800">Patient Details & Preferences</h4>
+
+                    {/* Patient Type Card Selector */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Patient Type *</label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <label
+                          className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition-all duration-200 select-none ${patientType === 'new'
+                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                            : 'bg-white border-slate-200 text-slate-750 hover:border-slate-300'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="patientType"
+                            value="new"
+                            className="sr-only"
+                            checked={patientType === 'new'}
+                            onChange={() => setPatientType('new')}
+                          />
+                          <span>New Patient</span>
                         </label>
-                        <div className="grid grid-cols-2 gap-2 max-h-[120px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-white shadow-3xs">
-                          {(groupedSlots.find(g => g.master_slot_id === selectedMasterId)?.slabs || []).map((slot) => {
-                            const isSlabSelected = bookingSlotId === String(slot.id);
-                            const isBooked = slot.is_booked;
-                            const isPast = slot.is_past;
-                            const isUnavailable = isBooked || isPast || !slot.available;
-                            return (
-                              <label
-                                key={slot.id}
-                                className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold transition-all duration-200 select-none ${isUnavailable
-                                  ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                                  : isSlabSelected
-                                    ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] cursor-pointer'
-                                    : 'bg-slate-50/50 border-slate-200 text-slate-700 hover:border-slate-350 cursor-pointer'
-                                  }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name="bookingSlot"
-                                  value={slot.id}
-                                  className="sr-only"
-                                  checked={isSlabSelected}
-                                  disabled={isUnavailable}
-                                  onChange={(e) => !isUnavailable && setBookingSlotId(e.target.value)}
-                                />
-                                <FiClock className="text-[9px] shrink-0" />
-                                <div className="flex flex-col items-center">
-                                  <span className="text-[9px] tracking-tight text-center font-bold">
-                                    {formatSlotRange(slot.start_time, slot.end_time)}
+                        <label
+                          className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition-all duration-200 select-none ${patientType === 'existing'
+                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                            : 'bg-white border-slate-200 text-slate-750 hover:border-slate-300'
+                            }`}
+                        >
+                          <input
+                            type="radio"
+                            name="patientType"
+                            value="existing"
+                            className="sr-only"
+                            checked={patientType === 'existing'}
+                            onChange={() => setPatientType('existing')}
+                          />
+                          <span>Existing Patient</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Conditional UHID Input */}
+                    {patientType === 'existing' && (
+                      <div className="animate-fade-in">
+                        <label className="text-[10px] font-bold text-[#960c0c] mb-1.5 uppercase tracking-wider block">UHID Number *</label>
+                        <div className="flex items-center border border-[#960c0c]/40 bg-white rounded-xl px-4 py-3 focus-within:border-[#960c0c] transition-all duration-300">
+                          <FiFileText className="text-[#960c0c] text-xs shrink-0" />
+                          <input
+                            type="text"
+                            placeholder="e.g. UHID123456"
+                            className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400 font-mono"
+                            value={uhid}
+                            onChange={(e) => setUhid(e.target.value.trim().toUpperCase())}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Full Name *</label>
+                      <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
+                        <FiUser className="text-slate-400 text-xs shrink-0" />
+                        <input
+                          type="text"
+                          placeholder="e.g. Binud Sharma"
+                          className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
+                          value={patientName}
+                          onChange={(e) => setPatientName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Email (Optional)</label>
+                        <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
+                          <FiMail className="text-slate-400 text-xs shrink-0" />
+                          <input
+                            type="email"
+                            placeholder="john@example.com"
+                            className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
+                            value={patientEmail}
+                            onChange={(e) => setPatientEmail(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Phone Number *</label>
+                        <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
+                          <FiPhone className="text-slate-400 text-xs shrink-0" />
+                          <input
+                            type="tel"
+                            placeholder="e.g. 9876543210"
+                            className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
+                            value={patientPhone}
+                            onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            maxLength={10}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Date selection */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Booking Date *</label>
+                      <input
+                        type="date"
+                        className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
+                        value={bookingDate}
+                        onChange={(e) => {
+                          setBookingDate(e.target.value);
+                          setBookingSlotId(''); // reset slot
+                        }}
+                        min={getTodayDateString()}
+                      />
+                    </div>
+
+                    {/* Available Slots Select Radio Chips */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">
+                        Select Time Slot *
+                      </label>
+
+                      {!bookingDocId || !bookingDate ? (
+                        <p className="text-[11px] text-slate-400 italic">Please select doctor and date to view slots.</p>
+                      ) : loadingFormSlots ? (
+                        <p className="text-[11px] text-slate-400 animate-pulse">Checking slot openings...</p>
+                      ) : availableSlots.length === 0 ? (
+                        <div className="p-3 bg-rose-50 border border-rose-100/50 rounded-xl flex items-center gap-2">
+                          <FiInfo className="text-rose-500 text-sm" />
+                          <p className="text-[10px] text-rose-600 font-semibold">No operational slots are available on this date.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Hourly Master Slots Grid */}
+                          <div className="grid grid-cols-2 gap-2.5 max-h-[150px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/30">
+                            {groupedSlots.map((group) => {
+                              const isSelected = selectedMasterId === group.master_slot_id;
+                              const isGroupUnavailable = group.slabs.every(s => s.is_booked || s.is_past || !s.available);
+                              return (
+                                <button
+                                  key={group.master_slot_id}
+                                  type="button"
+                                  disabled={isGroupUnavailable}
+                                  onClick={() => {
+                                    setSelectedMasterId(group.master_slot_id);
+                                    const currentSelectedSlab = availableSlots.find(s => String(s.id) === String(bookingSlotId));
+                                    if (!currentSelectedSlab || currentSelectedSlab.master_slot_id !== group.master_slot_id) {
+                                      setBookingSlotId('');
+                                    }
+                                  }}
+                                  className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold transition-all duration-200 select-none ${isGroupUnavailable
+                                    ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                                    : isSelected
+                                      ? 'bg-slate-800 text-white border-slate-800 shadow-3xs cursor-pointer'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-355 cursor-pointer'
+                                    }`}
+                                >
+                                  <FiCalendar className="text-[10px] shrink-0" />
+                                  <span className="text-[10px] tracking-tight text-center font-bold">
+                                    {formatSlotRange(group.master_start_time, group.master_end_time)}
                                   </span>
-                                  {isBooked && <span className="text-[7.5px] text-rose-500 font-black mt-0.5 leading-none">(Booked)</span>}
-                                </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* 15-Minute Slabs for the Selected Hour */}
+                          {selectedMasterId && (
+                            <div className="animate-fade-in space-y-2">
+                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                                Select 15-Minute Slab *
                               </label>
-                            );
-                          })}
+                              <div className="grid grid-cols-2 gap-2 max-h-[120px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-white shadow-3xs">
+                                {(groupedSlots.find(g => g.master_slot_id === selectedMasterId)?.slabs || []).map((slot) => {
+                                  const isSlabSelected = bookingSlotId === String(slot.id);
+                                  const isBooked = slot.is_booked;
+                                  const isPast = slot.is_past;
+                                  const isUnavailable = isBooked || isPast || !slot.available;
+                                  return (
+                                    <label
+                                      key={slot.id}
+                                      className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold transition-all duration-200 select-none ${isUnavailable
+                                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                        : isSlabSelected
+                                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] cursor-pointer'
+                                          : 'bg-slate-50/50 border-slate-200 text-slate-700 hover:border-slate-350 cursor-pointer'
+                                        }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name="bookingSlot"
+                                        value={slot.id}
+                                        className="sr-only"
+                                        checked={isSlabSelected}
+                                        disabled={isUnavailable}
+                                        onChange={(e) => !isUnavailable && setBookingSlotId(e.target.value)}
+                                      />
+                                      <FiClock className="text-[9px] shrink-0" />
+                                      <div className="flex flex-col items-center">
+                                        <span className="text-[9px] tracking-tight text-center font-bold">
+                                          {formatSlotRange(slot.start_time, slot.end_time)}
+                                        </span>
+                                        {isBooked && <span className="text-[7.5px] text-rose-500 font-black mt-0.5 leading-none">(Booked)</span>}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Symptoms / Notes (Optional)</label>
+                      <textarea
+                        placeholder="Describe symptoms or add notes..."
+                        rows="3"
+                        className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 min-h-[80px]"
+                        value={symptoms}
+                        onChange={(e) => setSymptoms(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Step 2 Actions */}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setBookingStep(1)}
+                      className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <FiArrowLeft className="text-[11px]" /> Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingStep(3)}
+                      disabled={
+                        !bookingDate ||
+                        !bookingSlotId ||
+                        !patientName.trim() ||
+                        patientPhone.length !== 10 ||
+                        (patientType === 'existing' && !uhid.trim())
+                      }
+                      className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
+                    >
+                      Next: Payment & Confirm <FiArrowRight className="text-[11px]" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Complete Payment */}
+              {bookingStep === 3 && (
+                <div className="space-y-4 animate-fade-in max-h-[60vh] overflow-y-auto pr-1">
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Booking Summary</h4>
+                    <div className="grid grid-cols-2 gap-y-1.5 text-xs">
+                      <span className="text-slate-500">Specialist:</span>
+                      <span className="font-bold text-slate-800 text-right">
+                        Dr. {(doctors.find(d => Number(d.id) === Number(bookingDocId))?.name || '').replace(/^Dr\.\s+/i, '')}
+                      </span>
+                      
+                      <span className="text-slate-500">Date & Slot:</span>
+                      <span className="font-bold text-slate-800 text-right font-mono">
+                        {bookingDate} ({(() => {
+                          const s = availableSlots.find(s => String(s.id) === String(bookingSlotId));
+                          return s ? formatSlotRange(s.start_time, s.end_time) : '';
+                        })()})
+                      </span>
+
+                      <span className="text-slate-500">Patient Name:</span>
+                      <span className="font-bold text-slate-800 text-right">{patientName}</span>
+
+                      <div className="col-span-2 border-t border-dashed border-slate-205 my-1"></div>
+
+                      <span className="text-slate-800 font-black text-xs">Consultation Fee:</span>
+                      <span className="font-black text-[#960c0c] text-xs text-right">₹500.00</span>
+                    </div>
+                  </div>
+
+                  {/* Payment Method Selector */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Payment Method</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('card')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${
+                          paymentMethod === 'card'
+                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                            : 'bg-white border-slate-200 text-slate-650 hover:border-slate-300'
+                        }`}
+                      >
+                        <FiCreditCard className="text-base" />
+                        <span>Card</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentMethod('upi')}
+                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${
+                          paymentMethod === 'upi'
+                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                            : 'bg-white border-slate-200 text-slate-655 hover:border-slate-300'
+                        }`}
+                      >
+                        <FiSmartphone className="text-base" />
+                        <span>UPI QR</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Payment Details Container */}
+                  <div className="min-h-[160px]">
+                    {paymentMethod === 'card' && (
+                      <div className="space-y-4 animate-fade-in">
+                        {/* Interactive Bank Card Mockup */}
+                        <div className="relative h-28 w-full bg-gradient-to-tr from-[#960c0c] to-[#d62828] rounded-2xl p-4 text-white shadow-md flex flex-col justify-between overflow-hidden">
+                          <div className="absolute right-0 top-0 w-24 h-24 bg-white/5 rounded-full -mr-8 -mt-8" />
+                          <div className="flex justify-between items-start">
+                            <span className="text-[8px] font-black tracking-widest uppercase">NEMCARE HOSPITAL CARD</span>
+                            <FiShield className="text-sm opacity-80" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold tracking-widest block font-mono">
+                              {cardNo ? cardNo : '•••• •••• •••• ••••'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[9px] uppercase">
+                            <div className="truncate max-w-[200px]">
+                              <span className="text-[7px] opacity-70 block">Cardholder</span>
+                              <span className="font-bold tracking-wide truncate max-w-[150px] inline-block">
+                                {cardName ? cardName : 'Patient Name'}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[7px] opacity-70 block">Expires</span>
+                              <span className="font-bold font-mono">{cardExpiry ? cardExpiry : 'MM/YY'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Entry Fields */}
+                        <div className="space-y-3">
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Card Number"
+                              value={cardNo}
+                              maxLength={19}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, '');
+                                const formatted = v.replace(/(\d{4})(?=\d)/g, '$1 ').slice(0, 19);
+                                setCardNo(formatted);
+                              }}
+                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <input
+                              type="text"
+                              placeholder="MM/YY"
+                              value={cardExpiry}
+                              maxLength={5}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, '');
+                                const formatted = v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2, 4)}` : v;
+                                setCardExpiry(formatted);
+                              }}
+                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
+                            />
+                            <input
+                              type="password"
+                              placeholder="CVV"
+                              value={cardCvv}
+                              maxLength={3}
+                              onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Cardholder Name"
+                              value={cardName}
+                              onChange={(e) => setCardName(e.target.value)}
+                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-semibold uppercase"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentMethod === 'upi' && (
+                      <div className="flex flex-col items-center justify-center p-4 bg-slate-50/50 border border-slate-100 rounded-2xl text-center space-y-3 animate-fade-in">
+                        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-3xs">
+                          <img
+                            src={paymentQR}
+                            alt="Mock UPI QR Code"
+                            className="w-28 h-28 object-contain"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-700 font-bold">Scan QR code using Google Pay, PhonePe, or Paytm</p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">UPI ID: nemcare@upi</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[9px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/30 font-extrabold uppercase tracking-wide">
+                          <FiShield /> Safe & Secure Payment
                         </div>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Patient Details */}
-              <div className="space-y-4 pt-2 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-800">Patient Credentials</h4>
-
-                {/* Patient Type Card Selector */}
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Patient Type *</label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <label
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition-all duration-200 select-none ${patientType === 'new'
-                        ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                        : 'bg-white border-slate-200 text-slate-750 hover:border-slate-300'
-                        }`}
+                  {/* Step 3 Actions */}
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setBookingStep(2)}
+                      className="px-4 py-2.5 border border-slate-200 text-slate-655 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5"
                     >
-                      <input
-                        type="radio"
-                        name="patientType"
-                        value="new"
-                        className="sr-only"
-                        checked={patientType === 'new'}
-                        onChange={() => setPatientType('new')}
-                      />
-                      <span>New Patient</span>
-                    </label>
-                    <label
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold cursor-pointer transition-all duration-200 select-none ${patientType === 'existing'
-                        ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                        : 'bg-white border-slate-200 text-slate-750 hover:border-slate-300'
-                        }`}
+                      <FiArrowLeft className="text-[11px]" /> Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBookAppointment}
+                      disabled={
+                        submittingBooking ||
+                        (paymentMethod === 'card' &&
+                          (!cardNo || cardNo.replace(/\s/g, '').length !== 16 || !cardExpiry || !cardCvv || !cardName.trim()))
+                      }
+                      className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
                     >
-                      <input
-                        type="radio"
-                        name="patientType"
-                        value="existing"
-                        className="sr-only"
-                        checked={patientType === 'existing'}
-                        onChange={() => setPatientType('existing')}
-                      />
-                      <span>Existing Patient</span>
-                    </label>
+                      {submittingBooking ? (
+                        <>
+                          <FiLoader className="animate-spin text-xs" /> Booking Slot...
+                        </>
+                      ) : (
+                        <>
+                          Confirm & Pay <FiCheckCircle className="text-[11px]" />
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
+              )}
 
-                {/* Conditional UHID Input */}
-                {patientType === 'existing' && (
-                  <div className="animate-fade-in">
-                    <label className="text-[10px] font-bold text-[#960c0c] mb-1.5 uppercase tracking-wider block">UHID Number *</label>
-                    <div className="flex items-center border border-[#960c0c]/40 bg-white rounded-xl px-4 py-3 focus-within:border-[#960c0c] transition-all duration-300">
-                      <FiFileText className="text-[#960c0c] text-xs shrink-0" />
-                      <input
-                        type="text"
-                        placeholder="e.g. UHID123456"
-                        className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400 font-mono"
-                        value={uhid}
-                        onChange={(e) => setUhid(e.target.value.trim().toUpperCase())}
-                        required={patientType === 'existing'}
-                      />
+              {/* Step 4: Success & Redirect countdown */}
+              {bookingStep === 4 && (
+                <div className="flex flex-col items-center text-center py-6 space-y-6 animate-fade-in">
+                  <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full border border-emerald-100/50 flex items-center justify-center shadow-sm">
+                    <FiCheckCircle className="text-4xl animate-bounce" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <h3 className="text-base font-black text-slate-800 tracking-tight">Appointment Booked Successfully!</h3>
+                    <p className="text-slate-400 text-xs leading-normal max-w-xs mx-auto">
+                      The patient appointment has been registered in the Nemcare database.
+                    </p>
+                  </div>
+
+                  {/* Redirection Countdown Overlay */}
+                  <div className="w-full bg-[#960c0c]/5 border border-[#960c0c]/10 rounded-2xl p-5 space-y-4 max-w-sm">
+                    <p className="text-[#960c0c] font-black text-xs">
+                      Redirecting you to the hospital's mandatory Pre-Registration page...
+                    </p>
+                    
+                    <div className="flex justify-center items-center gap-2">
+                      <FiLoader className="animate-spin text-[#960c0c] text-xs" />
+                      <span className="text-slate-450 font-bold text-[9px] uppercase tracking-wider">Please wait 2 seconds</span>
                     </div>
-                  </div>
-                )}
 
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Full Name *</label>
-                  <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
-                    <FiUser className="text-slate-400 text-xs shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="e.g. Binud Sharma"
-                      className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
-                      value={patientName}
-                      onChange={(e) => setPatientName(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Email Address (Optional)</label>
-                    <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
-                      <FiMail className="text-slate-400 text-xs shrink-0" />
-                      <input
-                        type="email"
-                        placeholder="john@example.com"
-                        className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
-                        value={patientEmail}
-                        onChange={(e) => setPatientEmail(e.target.value)}
-                      />
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-[#960c0c] h-full rounded-full animate-loading-bar" />
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Phone Number *</label>
-                    <div className="flex items-center border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 focus-within:border-[#960c0c] focus-within:bg-white transition-all duration-300">
-                      <FiPhone className="text-slate-400 text-xs shrink-0" />
-                      <input
-                        type="tel"
-                        placeholder="e.g. 9876543210"
-                        className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
-                        value={patientPhone}
-                        onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        required
-                        pattern="[0-9]{10}"
-                        maxLength={10}
-                        title="Phone number must be exactly 10 digits."
-                      />
-                    </div>
+                  <div className="pt-2">
+                    <a
+                      href="https://preregistration.nemcare.com"
+                      className="text-[#960c0c] hover:text-[#800a0a] font-extrabold text-xs underline decoration-2 transition duration-150"
+                    >
+                      Click here if not redirected automatically
+                    </a>
                   </div>
                 </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Symptoms / Notes (Optional)</label>
-                  <textarea
-                    placeholder="Describe symptoms or add notes..."
-                    rows="3"
-                    className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300 min-h-[80px]"
-                    value={symptoms}
-                    onChange={(e) => setSymptoms(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingBooking}
-                  className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer"
-                >
-                  {submittingBooking ? 'Booking Slot...' : 'Confirm Appointment'}
-                </button>
-              </div>
-
-            </form>
+              )}
+            </div>
           </div>
         </div>
       )}

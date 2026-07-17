@@ -1,16 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
 
-@theme {
-  --font-sans: 'Plus Jakarta Sans', sans-serif;
-}
-
 /* Force Plus Jakarta Sans globally on all text elements, buttons, inputs, and headers */
-*, ::before, ::after {
+*,
+::before,
+::after {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 /* Allow code, pre, monospace elements to retain standard monospace font styling */
-.font-mono, code, kbd, samp, pre {
+.font-mono,
+code,
+kbd,
+samp,
+pre {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
 }
 
@@ -23,10 +25,31 @@ body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {
   animation: fade-in 0.35s ease-out both;
+}
+
+@keyframes loading-bar {
+  from {
+    width: 0%;
+  }
+
+  to {
+    width: 100%;
+  }
+}
+
+.animate-loading-bar {
+  animation: loading-bar 2s linear forwards;
 }

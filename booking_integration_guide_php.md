@@ -20,6 +20,7 @@ graph TD
     G --> H[8. Fill Details: Name, Phone, Email & Patient Type]
     H --> I[9. If Existing Patient, Validate and Provide UHID]
     I --> J[10. Submit Full Payload to API]
+    J --> K[11. Success: Show Pre-Registration QR & Link]
 ```
 
 ---
@@ -168,6 +169,14 @@ Submit the chosen slot, date, doctor, patient contact details, patient type, and
 
 ---
 
+### Step 5: Post-Booking Pre-Registration (Required by Client)
+Once the API responds with success (`"success": true`), you **MUST** instruct the patient to pre-register. Present a success view or popup containing:
+- **Instructional Message**: `"Kindly pre-register yourself and note down your Pre-Registration ID. Please show this ID at the reception desk while making the payment."`
+- **QR Code Image**: Embed the image located at `assets/img/pre_reg_QR.png` (make sure you copy the QR asset from the React project to your PHP site assets directory).
+- **Link**: Provide a prominent link or action button taking them to `https://preregistration.nemcare.com`.
+
+---
+
 ## 💻 Sample Implementation Code for `book-an-appointment.php`
 
 ### Option A: Modern Frontend JavaScript (Recommended)
@@ -200,6 +209,22 @@ Add this styling and script directly to your PHP/HTML template to load options d
   .placeholder-text { font-size: 13px; color: #64748b; font-style: italic; }
   #submitBtn { padding: 12px; border: none; background: #960c0c; color: white; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 10px; }
   #submitBtn:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
+
+  /* Success Container Styling */
+  .success-container { text-align: center; max-width: 500px; margin: 20px auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); font-family: sans-serif; }
+  .success-title { color: #960c0c; font-size: 20px; font-weight: 800; margin-bottom: 10px; margin-top: 0; }
+  .success-desc { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+  .success-divider { border-top: 1px dashed #e2e8f0; margin: 20px -30px; }
+  .pre-reg-box { background: #f8fafc; border: 1px solid #f1f5f9; padding: 20px; border-radius: 12px; margin-top: 15px; text-align: left; }
+  .pre-reg-text { font-size: 13px; color: #334155; font-weight: 650; line-height: 1.5; margin-bottom: 15px; margin-top: 0; }
+  .pre-reg-text span { color: #960c0c; font-weight: 800; }
+  .pre-reg-qr-wrapper { display: flex; justify-content: center; margin-bottom: 10px; }
+  .pre-reg-qr { width: 224px; height: 224px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px; background: #fff; }
+  .or-divider { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; color: #94a3b8; font-size: 11px; font-weight: bold; }
+  .or-line { height: 1px; background: #cbd5e1; width: 40px; }
+  .pre-reg-link-wrapper { text-align: center; margin-top: 10px; }
+  .pre-reg-link { color: #960c0c; font-size: 13px; font-weight: 800; text-decoration: underline; transition: color 0.15s; }
+  .pre-reg-link:hover { color: #800a0a; }
 </style>
 
 <form id="appointmentForm" class="appointment-form">
@@ -282,6 +307,31 @@ Add this styling and script directly to your PHP/HTML template to load options d
 
   <button type="submit" id="submitBtn">Book Appointment</button>
 </form>
+
+<!-- Success Container (Hidden by default) -->
+<div id="successContainer" class="success-container hidden">
+  <h2 class="success-title">Booking Confirmed!</h2>
+  <p class="success-desc">Your appointment has been successfully scheduled.</p>
+  <div class="success-divider"></div>
+  <div class="pre-reg-box">
+    <p class="pre-reg-text">
+      Kindly pre-register yourself and note down your <span>Pre-Registration ID</span>. Please show this ID at the reception desk while making the payment.
+    </p>
+    <div class="pre-reg-qr-wrapper">
+      <img src="assets/img/pre_reg_QR.png" alt="Pre-registration QR Code" class="pre-reg-qr">
+    </div>
+    <div class="or-divider">
+      <div class="or-line"></div>
+      <span>OR</span>
+      <div class="or-line"></div>
+    </div>
+    <div class="pre-reg-link-wrapper">
+      <a href="https://preregistration.nemcare.com" target="_blank" rel="noopener noreferrer" class="pre-reg-link">
+        preregistration.nemcare.com
+      </a>
+    </div>
+  </div>
+</div>
 
 <script>
 const BASE_URL = 'https://api.nemcare.com/api';
@@ -576,7 +626,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const data = await res.json();
         if (res.ok) {
-          alert('Appointment booked successfully!');
+          // Hide form and show success container with QR & Link
+          form.classList.add('hidden');
+          const successContainer = document.getElementById('successContainer');
+          successContainer.classList.remove('hidden');
           form.reset();
           resetSlotsUI();
           uhidGroup.classList.add('hidden');
