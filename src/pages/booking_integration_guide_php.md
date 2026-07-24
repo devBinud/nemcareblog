@@ -1,13 +1,13 @@
 # PHP Booking Appointment Integration Guide
 **Base API URL**: `https://api.nemcare.com/api`
 
-This guide outlines the dynamic flow and APIs required to build the appointment booking form on your public PHP website (`book-an-appointment.php`). It matches the exact hourly-slot grouping and 15-minute slab booking logic used in the React admin dashboard.
+This guide outlines the complete dynamic flow, API specifications, and code samples required to build the appointment booking form on your public PHP website (`book-an-appointment.php`). It matches the exact hourly-slot grouping and 15-minute slab booking logic used in the Nemcare React Admin Dashboard.
 
 ---
 
-## 📅 The Booking Flow Overview
+## 📅 Booking Flow Overview
 
-To ensure patients only book available doctor slabs, the form is split into distinct sequential steps:
+To ensure patients only book operational and available doctor slabs, the booking process follows a structured, sequential workflow:
 
 ```mermaid
 graph TD
@@ -18,17 +18,19 @@ graph TD
     E --> F[6. Group Slots Hourly & Patient Selects Hour Block]
     F --> G[7. Display 15-Min Slabs & Patient Selects Sub-Slot]
     G --> H[8. Fill Details: Name, Phone, Email & Patient Type]
-    H --> I[9. If Existing Patient, Validate and Provide UHID]
+    H --> I[9. If Existing Patient, Validate & Input UHID]
     I --> J[10. Submit Full Payload to API]
-    J --> K[11. Success: Show Pre-Registration QR & Link]
+    J --> K[11. Success Confirmation View]
+    K --> |New Patient| L[Show Pre-Registration QR & Link]
+    K --> |Existing Patient| M[Show UHID & Reception Notice]
 ```
 
 ---
 
-## 🔗 Step-by-Step API Details
+## 🔗 Step-by-Step API Specifications
 
 ### Step 1: Fetch Departments
-Retrieve all available hospital departments to populate the "Specialty / Department" dropdown.
+Retrieve all available hospital departments to populate the **Specialty / Department** dropdown menu.
 
 * **Endpoint**: `GET https://api.nemcare.com/api/departments`
 * **Response Structure**:
@@ -52,7 +54,7 @@ Retrieve all available hospital departments to populate the "Specialty / Departm
 ---
 
 ### Step 2: Fetch Doctors
-Retrieve the doctors list to populate the "Doctor" dropdown.
+Retrieve the full list of doctors to populate the **Doctor** dropdown menu.
 
 * **Endpoint**: `GET https://api.nemcare.com/api/doctors`
 * **Response Structure**:
@@ -74,13 +76,14 @@ Retrieve the doctors list to populate the "Doctor" dropdown.
     ]
   }
   ```
+
 > [!TIP]
-> Filter the Doctor dropdown options dynamically: show only doctors where `doctor.department_id` matches the selected Department's ID.
+> Filter the Doctor dropdown options dynamically on the frontend: display only doctors where `doctor.department_id` matches the selected Department's ID.
 
 ---
 
 ### Step 3: Fetch Available Slots (Hourly & 15-Min Slabs)
-Once a patient has selected a **Doctor** and a **Date** (format: `YYYY-MM-DD`), fetch that doctor's time slot status for that date. The API returns 15-minute sub-slots (slabs) which contain a reference to their parent 1-hour master slot.
+Once the patient selects a **Doctor** and a **Date** (format: `YYYY-MM-DD`), fetch that doctor's time slots. The API returns 15-minute sub-slots (slabs), each referencing its parent 1-hour master slot via `master_slot_id`.
 
 * **Endpoint**: `GET https://api.nemcare.com/api/doctors/{doctor_id}/slots?date={YYYY-MM-DD}`
 * **Response Structure**:
@@ -113,19 +116,18 @@ Once a patient has selected a **Doctor** and a **Date** (format: `YYYY-MM-DD`), 
   }
   ```
 
-#### How to Group Slabs Hourly on the Frontend:
-1. **Group by `master_slot_id`**: Map the array of slots and group them by their `master_slot_id` key.
-2. **Determine Hour Window**: For each group, sort its slabs by `start_time` ascending. The parent hour's `start_time` is the first slab's start time and its `end_time` is the last slab's end time (e.g. Group containing `10:00-10:15`, `10:15-10:30`, `10:30-10:45`, `10:45-11:00` represents the parent block **10:00 AM - 11:00 AM**).
-3. **Double Selection UI**: Show the parent hour blocks first. Once the patient selects an hour, display the nested 15-minute sub-slots (slabs) belonging to that hour.
+#### Hourly Grouping Logic:
+1. **Group by `master_slot_id`**: Map the array of 15-minute slots and group them by `master_slot_id`.
+2. **Determine Hour Window**: Sort each group's slabs by `start_time` ascending. The parent hour start time is the first slab's start time, and the end time is the last slab's end time (e.g., `10:00 AM - 11:00 AM`).
+3. **Two-Tier Selection UI**: Display the parent hourly blocks first. When the user selects an hour block, display its nested 15-minute sub-slots underneath.
 
 > [!IMPORTANT]
-> **Show Booked Slots in the UI**: Do NOT filter out or hide booked/disabled slots. They must be displayed in the UI so patients know they exist, but styled as disabled/unselectable with a clear **(Booked)** label. 
-
+> **Show Booked Slots**: Do NOT hide booked or disabled slots. Render them in the UI as unselectable chips labeled **(Booked)** so patients see full schedule context.
 
 ---
 
-### Step 4: Book the Appointment
-Submit the chosen slot, date, doctor, patient contact details, patient type, and UHID to confirm the booking.
+### Step 4: Submit Appointment Booking
+Submit the selected doctor, date, master slot ID, slab start/end times, patient details, and patient type (with UHID if existing).
 
 * **Endpoint**: `POST https://api.nemcare.com/api/appointments`
 * **Content-Type**: `application/json`
@@ -133,19 +135,19 @@ Submit the chosen slot, date, doctor, patient contact details, patient type, and
   ```json
   {
     "doctor_id": 1,
-    "slot_id": 2, // The master_slot_id of the selected slab (e.g. 2)
-    "slab_start_time": "10:15", // The start_time of the specific 15-min slab
-    "slab_end_time": "10:30", // The end_time of the specific 15-min slab
+    "slot_id": 2,
+    "slab_start_time": "10:15",
+    "slab_end_time": "10:30",
     "date": "2026-06-15",
     "patient_name": "John Doe",
-    "patient_email": "john@example.com", // Optional
-    "patient_phone": "1234567890", // Must be exactly 10 digits
-    "patient_type": "existing", // "new" or "existing"
-    "uhid": "UHID12345" // Required only if patient_type is "existing"
+    "patient_email": "john@example.com",
+    "patient_phone": "9876543210",
+    "patient_type": "existing",
+    "uhid": "UHID12345"
   }
   ```
 
-* **Response (Success)**:
+* **Response (Success - HTTP 200/201)**:
   ```json
   {
     "success": true,
@@ -167,62 +169,80 @@ Submit the chosen slot, date, doctor, patient contact details, patient type, and
 
 ---
 
-### Step 5: Post-Booking Pre-Registration (Required by Client)
-Once the API responds with success (`"success": true`), you **MUST** instruct the patient to pre-register. Present a success view or popup containing:
-- **Instructional Message**: `"Kindly pre-register yourself and note down your Pre-Registration ID. Please show this ID at the reception desk while making the payment."`
-- **QR Code Image**: Embed the image located at `assets/img/pre_reg_QR.png` (make sure you copy the QR asset from the React project to your PHP site assets directory).
-- **Link**: Provide a prominent link or action button taking them to `https://preregistration.nemcare.com`.
+### Step 5: Post-Booking Confirmation Display
+
+Upon receiving `"success": true` from the booking API:
+
+* **For New Patients (`patient_type: "new"`)**:
+  - Show pre-registration instructions: `"Kindly pre-register yourself and note down your Pre-Registration ID. Please show this ID at the reception desk while making the payment."`
+  - Display the Pre-Registration QR Code (`assets/img/pre_reg_QR.png`).
+  - Provide a direct link to `https://preregistration.nemcare.com`.
+
+* **For Existing Patients (`patient_type: "existing"`)**:
+  - Pre-registration is **NOT** required.
+  - Display their UHID Number along with the concise notice:
+    > **During hospital visit show this UHID no at reception.**
 
 ---
 
-## 💻 Sample Implementation Code for `book-an-appointment.php`
+## 💻 Full Implementation Code (`book-an-appointment.php`)
 
-### Option A: Modern Frontend JavaScript (Recommended)
-Add this styling and script directly to your PHP/HTML template to load options dynamically.
+Below is the complete, copy-paste ready PHP/HTML template with integrated JavaScript and CSS styling.
 
 ```html
 <!-- book-an-appointment.php -->
-<style>
-  .appointment-form { max-width: 600px; margin: 0 auto; font-family: sans-serif; }
-  .form-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 6px; }
-  .form-group label { font-size: 12px; font-weight: bold; color: #475569; text-transform: uppercase; }
-  .form-group input, .form-group select { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
-  .radio-group { display: flex; gap: 15px; margin: 5px 0; }
-  .radio-option { display: flex; items-center: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  
-  /* Hourly Slots and Slabs Grids */
-  .grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 5px; }
-  .slot-btn { padding: 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; text-align: center; }
-  .slot-btn:hover { border-color: #94a3b8; }
-  .slot-btn.active { background: #1e293b; color: #fff; border-color: #1e293b; }
-  
-  .slab-chip { display: flex; align-items: center; justify-content: center; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: bold; background: #f8fafc; transition: all 0.2s; cursor: pointer; position: relative; }
-  .slab-chip input { position: absolute; opacity: 0; pointer-events: none; }
-  .slab-chip.selected { background: #fee2e2; border-color: #960c0c; color: #960c0c; }
-  .slab-chip.booked { opacity: 0.6; background: #e2e8f0; border-color: #cbd5e1; color: #64748b; cursor: not-allowed; }
-  
-  .hidden { display: none !important; }
-  .error-text { color: #dc2626; font-size: 12px; font-weight: bold; }
-  .placeholder-text { font-size: 13px; color: #64748b; font-style: italic; }
-  #submitBtn { padding: 12px; border: none; background: #960c0c; color: white; font-weight: bold; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 10px; }
-  #submitBtn:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book an Appointment | Nemcare Hospital</title>
+  <style>
+    .appointment-form { max-width: 600px; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif; }
+    .form-group { margin-bottom: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .form-group input, .form-group select { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; outline: none; }
+    .form-group input:focus, .form-group select:focus { border-color: #960c0c; box-shadow: 0 0 0 2px rgba(150, 12, 12, 0.15); }
+    .radio-group { display: flex; gap: 15px; margin: 5px 0; }
+    .radio-option { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #334155; }
+    
+    /* Hourly Slots and Slabs Grids */
+    .grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 5px; }
+    .slot-btn { padding: 12px; border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-align: center; color: #1e293b; }
+    .slot-btn:hover { border-color: #94a3b8; background: #f8fafc; }
+    .slot-btn.active { background: #1e293b; color: #fff; border-color: #1e293b; }
+    
+    .slab-chip { display: flex; align-items: center; justify-content: center; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 12px; font-weight: 700; background: #f8fafc; transition: all 0.2s; cursor: pointer; position: relative; text-align: center; }
+    .slab-chip input { position: absolute; opacity: 0; pointer-events: none; }
+    .slab-chip.selected { background: #fee2e2; border-color: #960c0c; color: #960c0c; }
+    .slab-chip.booked { opacity: 0.6; background: #e2e8f0; border-color: #cbd5e1; color: #64748b; cursor: not-allowed; }
+    
+    .hidden { display: none !important; }
+    .error-text { color: #dc2626; font-size: 12px; font-weight: bold; grid-column: span 2; }
+    .placeholder-text { font-size: 13px; color: #64748b; font-style: italic; grid-column: span 2; }
+    
+    #submitBtn { width: 100%; padding: 12px; border: none; background: #960c0c; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 10px; transition: background 0.15s; }
+    #submitBtn:hover { background: #800a0a; }
+    #submitBtn:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
 
-  /* Success Container Styling */
-  .success-container { text-align: center; max-width: 500px; margin: 20px auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); font-family: sans-serif; }
-  .success-title { color: #960c0c; font-size: 20px; font-weight: 800; margin-bottom: 10px; margin-top: 0; }
-  .success-desc { color: #64748b; font-size: 13px; margin-bottom: 20px; }
-  .success-divider { border-top: 1px dashed #e2e8f0; margin: 20px -30px; }
-  .pre-reg-box { background: #f8fafc; border: 1px solid #f1f5f9; padding: 20px; border-radius: 12px; margin-top: 15px; text-align: left; }
-  .pre-reg-text { font-size: 13px; color: #334155; font-weight: 650; line-height: 1.5; margin-bottom: 15px; margin-top: 0; }
-  .pre-reg-text span { color: #960c0c; font-weight: 800; }
-  .pre-reg-qr-wrapper { display: flex; justify-content: center; margin-bottom: 10px; }
-  .pre-reg-qr { width: 224px; height: 224px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px; background: #fff; }
-  .or-divider { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; color: #94a3b8; font-size: 11px; font-weight: bold; }
-  .or-line { height: 1px; background: #cbd5e1; width: 40px; }
-  .pre-reg-link-wrapper { text-align: center; margin-top: 10px; }
-  .pre-reg-link { color: #960c0c; font-size: 13px; font-weight: 800; text-decoration: underline; transition: color 0.15s; }
-  .pre-reg-link:hover { color: #800a0a; }
-</style>
+    /* Confirmation Container Styling */
+    .success-container { text-align: center; max-width: 500px; margin: 20px auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); font-family: system-ui, -apple-system, sans-serif; }
+    .success-title { color: #960c0c; font-size: 20px; font-weight: 800; margin-bottom: 10px; margin-top: 0; }
+    .success-desc { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+    .success-divider { border-top: 1px dashed #e2e8f0; margin: 20px -30px; }
+    .pre-reg-box { background: #f8fafc; border: 1px solid #f1f5f9; padding: 20px; border-radius: 12px; margin-top: 15px; text-align: left; }
+    .pre-reg-text { font-size: 13px; color: #334155; font-weight: 600; line-height: 1.5; margin-bottom: 15px; margin-top: 0; }
+    .pre-reg-text span { color: #960c0c; font-weight: 800; }
+    .pre-reg-qr-wrapper { display: flex; justify-content: center; margin-bottom: 10px; }
+    .pre-reg-qr { width: 200px; height: 200px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px; background: #fff; }
+    .or-divider { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; color: #94a3b8; font-size: 11px; font-weight: bold; }
+    .or-line { height: 1px; background: #cbd5e1; width: 40px; }
+    .pre-reg-link-wrapper { text-align: center; margin-top: 10px; }
+    .pre-reg-link { color: #960c0c; font-size: 13px; font-weight: 800; text-decoration: underline; transition: color 0.15s; }
+    .pre-reg-link:hover { color: #800a0a; }
+  </style>
+</head>
+<body>
 
 <form id="appointmentForm" class="appointment-form">
   <!-- 1. Department Dropdown -->
@@ -282,8 +302,8 @@ Add this styling and script directly to your PHP/HTML template to load options d
 
   <!-- 8. Patient Information -->
   <div class="form-group">
-    <label for="patient_name">Your Name</label>
-    <input type="text" id="patient_name" required>
+    <label for="patient_name">Your Full Name</label>
+    <input type="text" id="patient_name" placeholder="e.g. John Doe" required>
   </div>
   
   <div class="form-group">
@@ -293,18 +313,20 @@ Add this styling and script directly to your PHP/HTML template to load options d
   
   <div class="form-group">
     <label for="patient_email">Email Address (Optional)</label>
-    <input type="email" id="patient_email">
+    <input type="email" id="patient_email" placeholder="e.g. john@example.com">
   </div>
 
   <button type="submit" id="submitBtn">Book Appointment</button>
 </form>
 
-<!-- Success Container (Hidden by default) -->
+<!-- Success Confirmation Container -->
 <div id="successContainer" class="success-container hidden">
-  <h2 class="success-title">Booking Confirmed!</h2>
-  <p class="success-desc">Your appointment has been successfully scheduled.</p>
+  <h2 class="success-title">Appointment Booked Successfully!</h2>
+  <p class="success-desc">The patient appointment has been registered in the Nemcare database.</p>
   <div class="success-divider"></div>
-  <div class="pre-reg-box">
+  
+  <!-- For New Patients: Pre-Registration Card -->
+  <div id="preRegBox" class="pre-reg-box hidden">
     <p class="pre-reg-text">
       Kindly pre-register yourself and note down your <span>Pre-Registration ID</span>. Please show this ID at the reception desk while making the payment.
     </p>
@@ -321,6 +343,17 @@ Add this styling and script directly to your PHP/HTML template to load options d
         preregistration.nemcare.com
       </a>
     </div>
+  </div>
+
+  <!-- For Existing Patients: Confirmation Card -->
+  <div id="existingPatientBox" class="pre-reg-box hidden">
+    <p class="pre-reg-text">
+      <strong>Patient Type:</strong> Existing Patient<br>
+      <strong>UHID Number:</strong> <span id="existingUhidDisplay"></span>
+    </p>
+    <p style="font-size:12px; color:#475569; margin-top:8px;">
+      During hospital visit show this UHID no at reception.
+    </p>
   </div>
 </div>
 
@@ -343,11 +376,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const uhidInput = document.getElementById('uhid');
   const form = document.getElementById('appointmentForm');
 
-  // Set minimum date selection to today
+  // Restrict date picker minimum to today
   const today = new Date().toISOString().split('T')[0];
   dateInput.min = today;
 
-  // Toggle UHID field visibility & requirement
+  // Handle Patient Type toggle
   patientTypeRadios.forEach(radio => {
     radio.addEventListener('change', (e) => {
       if (e.target.value === 'existing') {
@@ -362,7 +395,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   try {
-    // 1. Fetch lookup lists
+    // 1. Fetch initial Departments and Doctors
     const [deptRes, docRes] = await Promise.all([
       fetch(`${BASE_URL}/departments`),
       fetch(`${BASE_URL}/doctors`)
@@ -371,7 +404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const depts = (await deptRes.json()).data || [];
     allDoctors = (await docRes.json()).data || [];
 
-    // Populate Department Dropdown
+    // Populate Department select dropdown
     depts.forEach(dept => {
       const option = document.createElement('option');
       option.value = dept.id;
@@ -379,7 +412,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       deptSelect.appendChild(option);
     });
 
-    // 2. Specialty selection change handler
+    // 2. Department Selection Listener
     deptSelect.addEventListener('change', () => {
       const selectedDept = deptSelect.value;
       docSelect.innerHTML = '<option value="">Choose a Doctor...</option>';
@@ -402,14 +435,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       docSelect.disabled = false;
     });
 
-    // 3. Doctor selection change handler
+    // 3. Doctor Selection Listener
     docSelect.addEventListener('change', () => {
       resetSlotsUI();
       dateInput.value = '';
       dateInput.disabled = !docSelect.value;
     });
 
-    // 4. Date selection change handler
+    // 4. Date Selection Listener
     dateInput.addEventListener('change', loadSlots);
 
     function resetSlotsUI() {
@@ -421,6 +454,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       groupedSlots = {};
     }
 
+    // Load available doctor slots for selected date
     async function loadSlots() {
       const doctorId = docSelect.value;
       const date = dateInput.value;
@@ -440,7 +474,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           return;
         }
 
-        // Group slots hourly by master_slot_id
+        // Group 15-minute slabs by parent master_slot_id
         groupedSlots = {};
         availableSlots.forEach(slot => {
           const mid = slot.master_slot_id;
@@ -450,7 +484,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           groupedSlots[mid].slabs.push(slot);
         });
 
-        // Convert grouped object to array & sort hourly
+        // Convert grouped object to sorted array of hour blocks
         const groupsArray = Object.values(groupedSlots).map(group => {
           group.slabs.sort((a, b) => a.start_time.localeCompare(b.start_time));
           return {
@@ -476,7 +510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
       } catch (err) {
-        hoursContainer.innerHTML = '<p class="error-text">Error fetching slots. Please try again.</p>';
+        hoursContainer.innerHTML = '<p class="error-text">Error fetching time slots. Please try again.</p>';
       }
     }
 
@@ -500,12 +534,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         radio.required = true;
 
         const timeLabel = document.createElement('span');
-        timeLabel.innerHTML = `${formatTimeTo12Hour(slab.start_time)} - ${formatTimeTo12Hour(slab.end_time)} ${isBooked ? '<br><small style="color:red">(Booked)</small>' : ''}`;
+        timeLabel.innerHTML = `${formatTimeTo12Hour(slab.start_time)} - ${formatTimeTo12Hour(slab.end_time)} ${isBooked ? '<br><small style="color:#dc2626; font-weight:800;">(Booked)</small>' : ''}`;
 
         chip.appendChild(radio);
         chip.appendChild(timeLabel);
 
-        // Highlight selection
         radio.addEventListener('change', () => {
           document.querySelectorAll('.slab-chip').forEach(c => c.classList.remove('selected'));
           if (radio.checked) chip.classList.add('selected');
@@ -515,7 +548,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // Time conversion helper
+    // Utility to format 24-hour time to 12-hour AM/PM format
     function formatTimeTo12Hour(timeStr) {
       if (!timeStr) return '';
       const parts = timeStr.split(':');
@@ -525,7 +558,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return `${displayHour}:${parts[1]} ${ampm}`;
     }
 
-    // 5. Submit Booking Form
+    // 5. Submit Form Listener
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
@@ -547,9 +580,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const payload = {
         doctor_id: parseInt(docSelect.value),
-        slot_id: Number(chosenSlab.master_slot_id), // Send the parent 1-hour master slot ID
-        slab_start_time: chosenSlab.start_time,     // Send specific slab start
-        slab_end_time: chosenSlab.end_time,         // Send specific slab end
+        slot_id: Number(chosenSlab.master_slot_id),
+        slab_start_time: chosenSlab.start_time,
+        slab_end_time: chosenSlab.end_time,
         date: dateInput.value,
         patient_name: document.getElementById('patient_name').value.trim(),
         patient_phone: document.getElementById('patient_phone').value.trim(),
@@ -570,10 +603,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const data = await res.json();
         if (res.ok) {
-          // Hide form and show success container with QR & Link
           form.classList.add('hidden');
           const successContainer = document.getElementById('successContainer');
           successContainer.classList.remove('hidden');
+
+          if (patientType === 'existing') {
+            document.getElementById('preRegBox').classList.add('hidden');
+            document.getElementById('existingPatientBox').classList.remove('hidden');
+            document.getElementById('existingUhidDisplay').textContent = uhidValue;
+          } else {
+            document.getElementById('preRegBox').classList.remove('hidden');
+            document.getElementById('existingPatientBox').classList.add('hidden');
+          }
+
           form.reset();
           resetSlotsUI();
           uhidGroup.classList.add('hidden');
@@ -583,7 +625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           alert('Booking Error: ' + (data.message || 'Failed to complete appointment.'));
         }
       } catch (err) {
-        alert('Could not establish database connection. Please try again.');
+        alert('Could not establish connection to the server. Please try again.');
       } finally {
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('submitBtn').textContent = 'Book Appointment';
@@ -595,4 +637,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 </script>
-```
+
+</body>
+</html>

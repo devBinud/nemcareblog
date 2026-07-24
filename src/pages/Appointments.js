@@ -482,9 +482,11 @@ const Appointments = () => {
       if (res.ok) {
         setBookingStep(4);
         fetchAppointments();
-        setTimeout(() => {
-          window.location.href = 'https://preregistration.nemcare.com';
-        }, 2000);
+        if (patientType === 'new') {
+          setTimeout(() => {
+            window.location.href = 'https://preregistration.nemcare.com';
+          }, 2000);
+        }
       } else {
         const json = await res.json();
         throw new Error(json.message || 'Failed to book appointment');
@@ -1161,24 +1163,22 @@ const Appointments = () => {
                 {/* Step 1 */}
                 <div className="flex items-center gap-1.5 pr-2 shrink-0">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
-                      bookingStep === 1
-                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
-                        : bookingStep > 1
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 1
+                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                      : bookingStep > 1
                         ? 'bg-emerald-500 text-white'
                         : 'bg-slate-100 text-slate-450 border border-slate-200'
-                    }`}
+                      }`}
                   >
                     {bookingStep > 1 ? <FiCheck className="text-[10px]" /> : 1}
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
-                      bookingStep === 1
-                        ? 'text-[#960c0c]'
-                        : bookingStep > 1
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 1
+                      ? 'text-[#960c0c]'
+                      : bookingStep > 1
                         ? 'text-emerald-500'
                         : 'text-slate-400'
-                    }`}
+                      }`}
                   >
                     Doctor & Dept
                   </span>
@@ -1190,24 +1190,22 @@ const Appointments = () => {
                 {/* Step 2 */}
                 <div className="flex items-center gap-1.5 px-2 shrink-0">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
-                      bookingStep === 2
-                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
-                        : bookingStep > 2
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 2
+                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                      : bookingStep > 2
                         ? 'bg-emerald-500 text-white'
                         : 'bg-slate-100 text-slate-450 border border-slate-200'
-                    }`}
+                      }`}
                   >
                     {bookingStep > 2 ? <FiCheck className="text-[10px]" /> : 2}
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
-                      bookingStep === 2
-                        ? 'text-[#960c0c]'
-                        : bookingStep > 2
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 2
+                      ? 'text-[#960c0c]'
+                      : bookingStep > 2
                         ? 'text-emerald-500'
                         : 'text-slate-400'
-                    }`}
+                      }`}
                   >
                     Details & Time
                   </span>
@@ -1219,24 +1217,22 @@ const Appointments = () => {
                 {/* Step 3 */}
                 <div className="flex items-center gap-1.5 pl-2 shrink-0">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${
-                      bookingStep === 3
-                        ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
-                        : bookingStep > 3
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 3
+                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                      : bookingStep > 3
                         ? 'bg-emerald-500 text-white'
                         : 'bg-slate-100 text-slate-450 border border-slate-200'
-                    }`}
+                      }`}
                   >
                     {bookingStep > 3 ? <FiCheck className="text-[10px]" /> : 3}
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${
-                      bookingStep === 3
-                        ? 'text-[#960c0c]'
-                        : bookingStep > 3
+                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 3
+                      ? 'text-[#960c0c]'
+                      : bookingStep > 3
                         ? 'text-emerald-500'
                         : 'text-slate-400'
-                    }`}
+                      }`}
                   >
                     Payment
                   </span>
@@ -1335,7 +1331,10 @@ const Appointments = () => {
                             value="new"
                             className="sr-only"
                             checked={patientType === 'new'}
-                            onChange={() => setPatientType('new')}
+                            onChange={() => {
+                              setPatientType('new');
+                              setUhid('');
+                            }}
                           />
                           <span>New Patient</span>
                         </label>
@@ -1582,7 +1581,7 @@ const Appointments = () => {
                       <span className="font-bold text-slate-800 text-right">
                         Dr. {(doctors.find(d => Number(d.id) === Number(bookingDocId))?.name || '').replace(/^Dr\.\s+/i, '')}
                       </span>
-                      
+
                       <span className="text-slate-500">Date & Slot:</span>
                       <span className="font-bold text-slate-800 text-right font-mono">
                         {bookingDate} ({(() => {
@@ -1608,11 +1607,10 @@ const Appointments = () => {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('card')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${
-                          paymentMethod === 'card'
-                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                            : 'bg-white border-slate-200 text-slate-650 hover:border-slate-300'
-                        }`}
+                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${paymentMethod === 'card'
+                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                          : 'bg-white border-slate-200 text-slate-650 hover:border-slate-300'
+                          }`}
                       >
                         <FiCreditCard className="text-base" />
                         <span>Card</span>
@@ -1620,11 +1618,10 @@ const Appointments = () => {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('upi')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${
-                          paymentMethod === 'upi'
-                            ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                            : 'bg-white border-slate-200 text-slate-655 hover:border-slate-300'
-                        }`}
+                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${paymentMethod === 'upi'
+                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
+                          : 'bg-white border-slate-200 text-slate-655 hover:border-slate-300'
+                          }`}
                       >
                         <FiSmartphone className="text-base" />
                         <span>UPI QR</span>
@@ -1766,7 +1763,7 @@ const Appointments = () => {
                 </div>
               )}
 
-              {/* Step 4: Success & Redirect countdown */}
+              {/* Step 4: Success & Confirmation */}
               {bookingStep === 4 && (
                 <div className="flex flex-col items-center text-center py-6 space-y-6 animate-fade-in">
                   <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full border border-emerald-100/50 flex items-center justify-center shadow-sm">
@@ -1780,30 +1777,66 @@ const Appointments = () => {
                     </p>
                   </div>
 
-                  {/* Redirection Countdown Overlay */}
-                  <div className="w-full bg-[#960c0c]/5 border border-[#960c0c]/10 rounded-2xl p-5 space-y-4 max-w-sm">
-                    <p className="text-[#960c0c] font-black text-xs">
-                      Redirecting you to the hospital's mandatory Pre-Registration page...
-                    </p>
-                    
-                    <div className="flex justify-center items-center gap-2">
-                      <FiLoader className="animate-spin text-[#960c0c] text-xs" />
-                      <span className="text-slate-450 font-bold text-[9px] uppercase tracking-wider">Please wait 2 seconds</span>
-                    </div>
+                  {patientType === 'new' ? (
+                    <>
+                      {/* Redirection Countdown Overlay for New Patients */}
+                      <div className="w-full bg-[#960c0c]/5 border border-[#960c0c]/10 rounded-2xl p-5 space-y-4 max-w-sm">
+                        <p className="text-[#960c0c] font-black text-xs">
+                          Redirecting you to the hospital's mandatory Pre-Registration page...
+                        </p>
 
-                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-[#960c0c] h-full rounded-full animate-loading-bar" />
-                    </div>
-                  </div>
+                        <div className="flex justify-center items-center gap-2">
+                          <FiLoader className="animate-spin text-[#960c0c] text-xs" />
+                          <span className="text-slate-450 font-bold text-[9px] uppercase tracking-wider">Please wait 2 seconds</span>
+                        </div>
 
-                  <div className="pt-2">
-                    <a
-                      href="https://preregistration.nemcare.com"
-                      className="text-[#960c0c] hover:text-[#800a0a] font-extrabold text-xs underline decoration-2 transition duration-150"
-                    >
-                      Click here if not redirected automatically
-                    </a>
-                  </div>
+                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                          <div className="bg-[#960c0c] h-full rounded-full animate-loading-bar" />
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        <a
+                          href="https://preregistration.nemcare.com"
+                          className="text-[#960c0c] hover:text-[#800a0a] font-extrabold text-xs underline decoration-2 transition duration-150"
+                        >
+                          Click here if not redirected automatically
+                        </a>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Confirmation Details for Existing Patients */}
+                      <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-3 max-w-sm text-left">
+                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Patient Type</span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100/50 uppercase">
+                            Existing Patient
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">UHID Number</span>
+                          <span className="text-xs font-black text-slate-800 font-mono tracking-wide">{uhid}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 font-medium leading-relaxed pt-1">
+                          During hospital visit show this UHID no at reception.
+                        </p>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsModalOpen(false);
+                            resetForm();
+                          }}
+                          className="bg-[#960c0c] hover:bg-[#800a0a] text-white font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-xs transition duration-150 cursor-pointer"
+                        >
+                          Done & Close
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

@@ -34,3 +34,15 @@ Removed unused variables and imports to ensure the application builds with `0` c
   * Removed `FiDollarSign` icon import from `react-icons/fi`.
   * Removed `preRegQR` image asset import from the header.
   * **File Modified**: [Appointments.js](file:///d:/Binud%20Files/portfolio/nemcareblog/src/pages/Appointments.js#L2-L11)
+
+---
+
+## 4. Patient Type Conditional Pre-Registration Handling
+Pre-registration logic has been updated to trigger only for **New Patients**. Existing patients who already possess a UHID are no longer redirected to pre-registration.
+
+* **Changes Made**:
+  * **New Patients (`patientType === 'new'`)**: Booking completion displays the mandatory pre-registration notice, progress bar, and automatically redirects to `https://preregistration.nemcare.com` after 2 seconds.
+  * **Existing Patients (`patientType === 'existing'`)**: Booking completion displays a confirmation box with their registered UHID number and clear instructions that pre-registration is not required. A "Done & Close" action button allows completing the booking modal seamlessly.
+  * **Reset Behavior**: Switching from Existing Patient back to New Patient automatically resets the UHID input field.
+  * **File Modified**: [Appointments.js](file:///d:/Binud%20Files/portfolio/nemcareblog/src/pages/Appointments.js)
+
