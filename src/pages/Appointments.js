@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload, FiEye, FiCheck, FiArrowRight, FiArrowLeft, FiCreditCard, FiSmartphone, FiShield, FiLoader } from 'react-icons/fi';
+import { FiCalendar, FiPlus, FiX, FiCheckCircle, FiXCircle, FiUser, FiMail, FiPhone, FiInfo, FiTrash2, FiClock, FiSearch, FiFileText, FiChevronLeft, FiChevronRight, FiDownload, FiEye, FiCheck, FiArrowRight, FiArrowLeft, FiLoader } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
@@ -7,7 +7,6 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import paymentQR from '../assets/img/payment_qr.png';
 
 const MySwal = withReactContent(Swal);
 
@@ -81,18 +80,36 @@ const Appointments = () => {
   const [uhid, setUhid] = useState('');
   const [symptoms, setSymptoms] = useState('');
 
-  // Booking Wizard Steps and Mock Payment
-  const [bookingStep, setBookingStep] = useState(1); // 1, 2, 3, 4
-  const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' | 'upi' | 'cash'
-  const [cardNo, setCardNo] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [cardName, setCardName] = useState('');
+  // Booking Wizard Steps and Countdown Redirect
+  const [bookingStep, setBookingStep] = useState(1); // 1: Select Doctor, 2: Patient Details, 3: Confirm
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [countdown, setCountdown] = useState(3);
 
   // Available slots for selected doc/date
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingFormSlots, setLoadingFormSlots] = useState(false);
   const [submittingBooking, setSubmittingBooking] = useState(false);
+
+  // Automatic 3-2-1 countdown stopwatch redirect for new patients
+  useEffect(() => {
+    let timer;
+    if (isModalOpen && bookingStep === 3 && bookingSuccess && patientType === 'new') {
+      setCountdown(3);
+      timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            window.location.href = 'https://preregistration.nemcare.com';
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isModalOpen, bookingStep, bookingSuccess, patientType]);
 
   // Filter States
   const [filterDeptId, setFilterDeptId] = useState('');
@@ -440,26 +457,6 @@ const Appointments = () => {
       return;
     }
 
-    if (paymentMethod === 'card') {
-      const cleanCardNo = cardNo.replace(/\s/g, '');
-      if (cleanCardNo.length !== 16 || !/^\d+$/.test(cleanCardNo)) {
-        MySwal.fire({ title: 'Error', text: 'Please enter a valid 16-digit card number.', icon: 'error', confirmButtonColor: '#960c0c' });
-        return;
-      }
-      if (!/^\d{2}\/\d{2}$/.test(cardExpiry)) {
-        MySwal.fire({ title: 'Error', text: 'Please enter expiry in MM/YY format.', icon: 'error', confirmButtonColor: '#960c0c' });
-        return;
-      }
-      if (cardCvv.length !== 3 || !/^\d+$/.test(cardCvv)) {
-        MySwal.fire({ title: 'Error', text: 'Please enter a valid 3-digit CVV.', icon: 'error', confirmButtonColor: '#960c0c' });
-        return;
-      }
-      if (!cardName.trim()) {
-        MySwal.fire({ title: 'Error', text: 'Please enter cardholder name.', icon: 'error', confirmButtonColor: '#960c0c' });
-        return;
-      }
-    }
-
     setSubmittingBooking(true);
     try {
       const res = await apiFetch('/appointments', {
@@ -480,13 +477,9 @@ const Appointments = () => {
       });
 
       if (res.ok) {
-        setBookingStep(4);
+        setBookingSuccess(true);
+        setBookingStep(3);
         fetchAppointments();
-        if (patientType === 'new') {
-          setTimeout(() => {
-            window.location.href = 'https://preregistration.nemcare.com';
-          }, 2000);
-        }
       } else {
         const json = await res.json();
         throw new Error(json.message || 'Failed to book appointment');
@@ -517,11 +510,8 @@ const Appointments = () => {
     setSymptoms('');
     setAvailableSlots([]);
     setBookingStep(1);
-    setPaymentMethod('card');
-    setCardNo('');
-    setCardExpiry('');
-    setCardCvv('');
-    setCardName('');
+    setBookingSuccess(false);
+    setCountdown(3);
   };
 
   // Filtered Appointments list
@@ -1141,13 +1131,12 @@ const Appointments = () => {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 md:p-8 animate-fade-in space-y-6">
-
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
                 <FiCalendar className="text-[#960c0c]" /> Book Patient Appointment
               </h3>
-              {bookingStep < 4 && (
+              {bookingStep < 3 && (
                 <button
                   onClick={() => setIsModalOpen(false)}
                   className="text-slate-450 hover:text-slate-700 transition cursor-pointer"
@@ -1158,10 +1147,10 @@ const Appointments = () => {
             </div>
 
             {/* Step Indicators */}
-            {bookingStep < 4 && (
+            {!bookingSuccess && (
               <div className="flex items-center pb-2 border-b border-slate-100/50 w-full">
-                {/* Step 1 */}
-                <div className="flex items-center gap-1.5 pr-2 shrink-0">
+                {/* Step 1: Select Doctor */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 1
                       ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
@@ -1180,15 +1169,15 @@ const Appointments = () => {
                         : 'text-slate-400'
                       }`}
                   >
-                    Doctor & Dept
+                    Select Doctor
                   </span>
                 </div>
 
                 {/* Connector Line 1 */}
-                <div className={`h-0.5 flex-grow transition-all duration-300 ${bookingStep > 1 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                <div className={`h-0.5 flex-grow mx-1.5 transition-all duration-300 ${bookingStep > 1 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
 
-                {/* Step 2 */}
-                <div className="flex items-center gap-1.5 px-2 shrink-0">
+                {/* Step 2: Patient Details */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 2
                       ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
@@ -1207,34 +1196,30 @@ const Appointments = () => {
                         : 'text-slate-400'
                       }`}
                   >
-                    Details & Time
+                    Patient Details
                   </span>
                 </div>
 
                 {/* Connector Line 2 */}
-                <div className={`h-0.5 flex-grow transition-all duration-300 ${bookingStep > 2 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                <div className={`h-0.5 flex-grow mx-1.5 transition-all duration-300 ${bookingStep > 2 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
 
-                {/* Step 3 */}
-                <div className="flex items-center gap-1.5 pl-2 shrink-0">
+                {/* Step 3: Confirm */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 3
                       ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
-                      : bookingStep > 3
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-100 text-slate-450 border border-slate-200'
+                      : 'bg-slate-100 text-slate-450 border border-slate-200'
                       }`}
                   >
-                    {bookingStep > 3 ? <FiCheck className="text-[10px]" /> : 3}
+                    3
                   </div>
                   <span
                     className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 3
                       ? 'text-[#960c0c]'
-                      : bookingStep > 3
-                        ? 'text-emerald-500'
-                        : 'text-slate-400'
+                      : 'text-slate-400'
                       }`}
                   >
-                    Payment
+                    Confirm
                   </span>
                 </div>
               </div>
@@ -1245,6 +1230,8 @@ const Appointments = () => {
               {/* Step 1: Select Department & Doctor */}
               {bookingStep === 1 && (
                 <div className="space-y-4 animate-fade-in">
+                  <h4 className="text-xs font-bold text-slate-800">Select Medical Speciality & Doctor</h4>
+
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Departments</label>
@@ -1302,7 +1289,7 @@ const Appointments = () => {
                       disabled={!bookingDocId}
                       className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
                     >
-                      Next: Details & Time <FiArrowRight className="text-[11px]" />
+                      Next: Patient Details <FiArrowRight className="text-[11px]" />
                     </button>
                   </div>
                 </div>
@@ -1441,7 +1428,7 @@ const Appointments = () => {
                       </label>
 
                       {!bookingDocId || !bookingDate ? (
-                        <p className="text-[11px] text-slate-400 italic">Please select doctor and date to view slots.</p>
+                        <p className="text-[11px] text-slate-400 italic">Please select date to view slots.</p>
                       ) : loadingFormSlots ? (
                         <p className="text-[11px] text-slate-400 animate-pulse">Checking slot openings...</p>
                       ) : availableSlots.length === 0 ? (
@@ -1565,277 +1552,197 @@ const Appointments = () => {
                       }
                       className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
                     >
-                      Next: Payment & Confirm <FiArrowRight className="text-[11px]" />
+                      Next: Review & Confirm <FiArrowRight className="text-[11px]" />
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Step 3: Complete Payment */}
+              {/* Step 3: Review Summary OR Success Redirect */}
               {bookingStep === 3 && (
-                <div className="space-y-4 animate-fade-in max-h-[60vh] overflow-y-auto pr-1">
-                  <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
-                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Booking Summary</h4>
-                    <div className="grid grid-cols-2 gap-y-1.5 text-xs">
-                      <span className="text-slate-500">Specialist:</span>
-                      <span className="font-bold text-slate-800 text-right">
-                        Dr. {(doctors.find(d => Number(d.id) === Number(bookingDocId))?.name || '').replace(/^Dr\.\s+/i, '')}
-                      </span>
+                <div>
+                  {!bookingSuccess ? (
+                    <div className="space-y-4 animate-fade-in">
+                      <h4 className="text-xs font-bold text-slate-800">Review & Confirm Appointment</h4>
 
-                      <span className="text-slate-500">Date & Slot:</span>
-                      <span className="font-bold text-slate-800 text-right font-mono">
-                        {bookingDate} ({(() => {
-                          const s = availableSlots.find(s => String(s.id) === String(bookingSlotId));
-                          return s ? formatSlotRange(s.start_time, s.end_time) : '';
-                        })()})
-                      </span>
+                      {/* Summary Card */}
+                      <div className="bg-slate-50/70 rounded-2xl border border-slate-200/60 p-4 space-y-3">
+                        {/* Doctor Info */}
+                        {(() => {
+                          const matchedDoc = doctors.find(d => Number(d.id) === Number(bookingDocId));
+                          const docName = matchedDoc?.name || 'Selected Doctor';
+                          const matchedDept = departments.find(d => Number(d.id) === Number(matchedDoc?.department_id || bookingDeptId));
+                          const deptName = matchedDept?.name || 'Specialist';
+                          const selectedSlab = availableSlots.find(s => String(s.id) === String(bookingSlotId));
+                          const slotTime = selectedSlab ? formatSlotRange(selectedSlab.start_time, selectedSlab.end_time) : 'Selected Slot';
+                          const formattedDate = bookingDate ? new Date(bookingDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
 
-                      <span className="text-slate-500">Patient Name:</span>
-                      <span className="font-bold text-slate-800 text-right">{patientName}</span>
+                          return (
+                            <>
+                              <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60">
+                                <div>
+                                  <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Doctor & Department</p>
+                                  <p className="text-xs font-bold text-slate-800 mt-0.5">Dr. {docName.replace(/^Dr\.\s+/i, '')}</p>
+                                  <p className="text-[10px] font-semibold text-[#960c0c]">{deptName}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Schedule</p>
+                                  <p className="text-xs font-bold text-slate-800 mt-0.5">{formattedDate}</p>
+                                  <p className="text-[10px] font-semibold text-slate-600">{slotTime}</p>
+                                </div>
+                              </div>
 
-                      <div className="col-span-2 border-t border-dashed border-slate-205 my-1"></div>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                  <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Patient Name</p>
+                                  <p className="font-bold text-slate-800 mt-0.5">{patientName}</p>
+                                  <span className="inline-block px-2 py-0.5 rounded-md bg-slate-200/60 text-slate-650 text-[9px] font-extrabold uppercase mt-1">
+                                    {patientType === 'existing' ? `Existing (${uhid})` : 'New Patient'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Contact Info</p>
+                                  <p className="font-bold text-slate-800 mt-0.5">{patientPhone}</p>
+                                  {patientEmail && <p className="text-[10px] text-slate-500 font-medium truncate">{patientEmail}</p>}
+                                </div>
+                              </div>
 
-                      <span className="text-slate-800 font-black text-xs">Consultation Fee:</span>
-                      <span className="font-black text-[#960c0c] text-xs text-right">₹500.00</span>
-                    </div>
-                  </div>
-
-                  {/* Payment Method Selector */}
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Payment Method</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('card')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${paymentMethod === 'card'
-                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                          : 'bg-white border-slate-200 text-slate-650 hover:border-slate-300'
-                          }`}
-                      >
-                        <FiCreditCard className="text-base" />
-                        <span>Card</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('upi')}
-                        className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold gap-1 transition-all ${paymentMethod === 'upi'
-                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] shadow-3xs'
-                          : 'bg-white border-slate-200 text-slate-655 hover:border-slate-300'
-                          }`}
-                      >
-                        <FiSmartphone className="text-base" />
-                        <span>UPI QR</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Payment Details Container */}
-                  <div className="min-h-[160px]">
-                    {paymentMethod === 'card' && (
-                      <div className="space-y-4 animate-fade-in">
-                        {/* Interactive Bank Card Mockup */}
-                        <div className="relative h-28 w-full bg-gradient-to-tr from-[#960c0c] to-[#d62828] rounded-2xl p-4 text-white shadow-md flex flex-col justify-between overflow-hidden">
-                          <div className="absolute right-0 top-0 w-24 h-24 bg-white/5 rounded-full -mr-8 -mt-8" />
-                          <div className="flex justify-between items-start">
-                            <span className="text-[8px] font-black tracking-widest uppercase">NEMCARE HOSPITAL CARD</span>
-                            <FiShield className="text-sm opacity-80" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold tracking-widest block font-mono">
-                              {cardNo ? cardNo : '•••• •••• •••• ••••'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-[9px] uppercase">
-                            <div className="truncate max-w-[200px]">
-                              <span className="text-[7px] opacity-70 block">Cardholder</span>
-                              <span className="font-bold tracking-wide truncate max-w-[150px] inline-block">
-                                {cardName ? cardName : 'Patient Name'}
-                              </span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[7px] opacity-70 block">Expires</span>
-                              <span className="font-bold font-mono">{cardExpiry ? cardExpiry : 'MM/YY'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Card Entry Fields */}
-                        <div className="space-y-3">
-                          <div>
-                            <input
-                              type="text"
-                              placeholder="Card Number"
-                              value={cardNo}
-                              maxLength={19}
-                              onChange={(e) => {
-                                const v = e.target.value.replace(/\D/g, '');
-                                const formatted = v.replace(/(\d{4})(?=\d)/g, '$1 ').slice(0, 19);
-                                setCardNo(formatted);
-                              }}
-                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <input
-                              type="text"
-                              placeholder="MM/YY"
-                              value={cardExpiry}
-                              maxLength={5}
-                              onChange={(e) => {
-                                const v = e.target.value.replace(/\D/g, '');
-                                const formatted = v.length > 2 ? `${v.slice(0, 2)}/${v.slice(2, 4)}` : v;
-                                setCardExpiry(formatted);
-                              }}
-                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
-                            />
-                            <input
-                              type="password"
-                              placeholder="CVV"
-                              value={cardCvv}
-                              maxLength={3}
-                              onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-mono font-bold"
-                            />
-                          </div>
-                          <div>
-                            <input
-                              type="text"
-                              placeholder="Cardholder Name"
-                              value={cardName}
-                              onChange={(e) => setCardName(e.target.value)}
-                              className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all font-semibold uppercase"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {paymentMethod === 'upi' && (
-                      <div className="flex flex-col items-center justify-center p-4 bg-slate-50/50 border border-slate-100 rounded-2xl text-center space-y-3 animate-fade-in">
-                        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-3xs">
-                          <img
-                            src={paymentQR}
-                            alt="Mock UPI QR Code"
-                            className="w-28 h-28 object-contain"
-                          />
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-700 font-bold">Scan QR code using Google Pay, PhonePe, or Paytm</p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">UPI ID: nemcare@upi</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[9px] text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/30 font-extrabold uppercase tracking-wide">
-                          <FiShield /> Safe & Secure Payment
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Step 3 Actions */}
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setBookingStep(2)}
-                      className="px-4 py-2.5 border border-slate-200 text-slate-655 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5"
-                    >
-                      <FiArrowLeft className="text-[11px]" /> Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBookAppointment}
-                      disabled={
-                        submittingBooking ||
-                        (paymentMethod === 'card' &&
-                          (!cardNo || cardNo.replace(/\s/g, '').length !== 16 || !cardExpiry || !cardCvv || !cardName.trim()))
-                      }
-                      className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5"
-                    >
-                      {submittingBooking ? (
-                        <>
-                          <FiLoader className="animate-spin text-xs" /> Booking Slot...
-                        </>
-                      ) : (
-                        <>
-                          Confirm & Pay <FiCheckCircle className="text-[11px]" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 4: Success & Confirmation */}
-              {bookingStep === 4 && (
-                <div className="flex flex-col items-center text-center py-6 space-y-6 animate-fade-in">
-                  <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full border border-emerald-100/50 flex items-center justify-center shadow-sm">
-                    <FiCheckCircle className="text-4xl animate-bounce" />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <h3 className="text-base font-black text-slate-800 tracking-tight">Appointment Booked Successfully!</h3>
-                    <p className="text-slate-400 text-xs leading-normal max-w-xs mx-auto">
-                      The patient appointment has been registered in the Nemcare database.
-                    </p>
-                  </div>
-
-                  {patientType === 'new' ? (
-                    <>
-                      {/* Redirection Countdown Overlay for New Patients */}
-                      <div className="w-full bg-[#960c0c]/5 border border-[#960c0c]/10 rounded-2xl p-5 space-y-4 max-w-sm">
-                        <p className="text-[#960c0c] font-black text-xs">
-                          Redirecting you to the hospital's mandatory Pre-Registration page...
-                        </p>
-
-                        <div className="flex justify-center items-center gap-2">
-                          <FiLoader className="animate-spin text-[#960c0c] text-xs" />
-                          <span className="text-slate-450 font-bold text-[9px] uppercase tracking-wider">Please wait 2 seconds</span>
-                        </div>
-
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-[#960c0c] h-full rounded-full animate-loading-bar" />
-                        </div>
+                              {symptoms && (
+                                <div className="pt-2 border-t border-slate-200/60">
+                                  <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Symptoms / Notes</p>
+                                  <p className="text-[11px] text-slate-650 font-medium italic mt-0.5 line-clamp-2">"{symptoms}"</p>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
 
-                      <div className="pt-2">
-                        <a
-                          href="https://preregistration.nemcare.com"
-                          className="text-[#960c0c] hover:text-[#800a0a] font-extrabold text-xs underline decoration-2 transition duration-150"
-                        >
-                          Click here if not redirected automatically
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* Confirmation Details for Existing Patients */}
-                      <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-3 max-w-sm text-left">
-                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Patient Type</span>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100/50 uppercase">
-                            Existing Patient
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">UHID Number</span>
-                          <span className="text-xs font-black text-slate-800 font-mono tracking-wide">{uhid}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 font-medium leading-relaxed pt-1">
-                          During hospital visit show this UHID no at reception.
-                        </p>
-                      </div>
-
-                      <div className="pt-2">
+                      {/* Step 3 Actions */}
+                      <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                         <button
                           type="button"
-                          onClick={() => {
-                            setIsModalOpen(false);
-                            resetForm();
-                          }}
-                          className="bg-[#960c0c] hover:bg-[#800a0a] text-white font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-xs transition duration-150 cursor-pointer"
+                          onClick={() => setBookingStep(2)}
+                          className="px-4 py-2.5 border border-slate-200 text-slate-650 hover:bg-slate-50 text-xs font-bold rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5"
                         >
-                          Done & Close
+                          <FiArrowLeft className="text-[11px]" /> Back
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBookAppointment}
+                          disabled={submittingBooking}
+                          className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold px-5 py-2.5 rounded-xl transition duration-250 cursor-pointer flex items-center gap-1.5 shadow-sm"
+                        >
+                          {submittingBooking ? (
+                            <>
+                              <FiLoader className="animate-spin text-xs" /> Confirming Booking...
+                            </>
+                          ) : (
+                            <>
+                              Confirm & Book Appointment <FiCheckCircle className="text-[11px]" />
+                            </>
+                          )}
                         </button>
                       </div>
-                    </>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center text-center py-6 space-y-6 animate-fade-in">
+                      <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full border border-emerald-100/50 flex items-center justify-center shadow-sm">
+                        <FiCheckCircle className="text-4xl" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <h3 className="text-base font-black text-slate-800 tracking-tight">Appointment Booked Successfully!</h3>
+                        <p className="text-slate-400 text-xs leading-normal max-w-xs mx-auto">
+                          The patient appointment has been registered in the Nemcare database.
+                        </p>
+                      </div>
+
+                      {patientType === 'new' ? (
+                        <div className="w-full space-y-6 max-w-sm mx-auto flex flex-col items-center">
+                          {/* Modern Stopwatch Timer */}
+                          <div className="relative flex flex-col items-center justify-center my-1">
+                            {/* Outer pulsing ring */}
+                            <div className="w-24 h-24 rounded-full bg-[#960c0c]/10 border-2 border-[#960c0c]/20 flex items-center justify-center animate-pulse">
+                              {/* Inner stopwatch badge */}
+                              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-[#960c0c] to-[#c51c1c] text-white flex flex-col items-center justify-center shadow-lg shadow-[#960c0c]/30 transform transition-all duration-300 scale-105">
+                                <span className="text-3xl font-black font-mono tracking-tight leading-none">
+                                  {countdown}
+                                </span>
+                                <span className="text-[8px] font-extrabold uppercase tracking-widest text-white/80 mt-0.5">
+                                  Sec
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 text-center">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-100 text-[#960c0c] text-[10px] font-black uppercase tracking-wider">
+                              <FiClock className="animate-spin text-xs" /> Pre-Registration Redirect
+                            </div>
+                            <p className="text-[#960c0c] font-bold text-xs">
+                              Redirecting to Nemcare Pre-Registration Portal in <span className="font-mono text-sm font-black">{countdown}</span> seconds...
+                            </p>
+                          </div>
+
+                          {/* Animated smooth progress bar */}
+                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden border border-slate-200/50 p-0.5">
+                            <div
+                              className="bg-gradient-to-r from-[#960c0c] to-[#e63946] h-full rounded-full transition-all duration-1000 ease-linear"
+                              style={{ width: `${(countdown / 3) * 100}%` }}
+                            />
+                          </div>
+
+                          <div className="flex flex-col items-center gap-2 pt-1 w-full">
+                            <a
+                              href="https://preregistration.nemcare.com"
+                              className="bg-[#960c0c] hover:bg-[#800a0a] text-white font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-xs transition duration-150 cursor-pointer flex items-center justify-center gap-2 w-full"
+                            >
+                              <span>Redirect Now</span>
+                              <FiArrowRight className="text-xs" />
+                            </a>
+                            <a
+                              href="https://preregistration.nemcare.com"
+                              className="text-slate-400 hover:text-[#960c0c] font-semibold text-[11px] underline decoration-1 transition duration-150"
+                            >
+                              Click here if not redirected automatically
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Confirmation Details for Existing Patients */}
+                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-3 max-w-sm text-left">
+                            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Patient Type</span>
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100/50 uppercase">
+                                Existing Patient
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between border-b border-slate-200/60 pb-2.5">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">UHID Number</span>
+                              <span className="text-xs font-black text-slate-800 font-mono tracking-wide">{uhid}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 font-medium leading-relaxed pt-1">
+                              During hospital visit show this UHID no at reception.
+                            </p>
+                          </div>
+
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsModalOpen(false);
+                                resetForm();
+                              }}
+                              className="bg-[#960c0c] hover:bg-[#800a0a] text-white font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-xs transition duration-150 cursor-pointer"
+                            >
+                              Done & Close
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
