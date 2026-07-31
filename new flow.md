@@ -1,6 +1,6 @@
 # Nemcare Hospital - Multi-Step Appointment Booking Flow Updates
 
-This document outlines the visual and functional updates applied to the Patient Appointment Booking wizard in the Nemcare Admin Panel.
+This document outlines the visual, functional, and integration updates applied to the Patient Appointment Booking wizard for both the **Nemcare Admin Panel** and the **Public Patient-Facing Website**.
 
 ---
 
@@ -45,4 +45,9 @@ Pre-registration logic has been updated to trigger only for **New Patients**. Ex
   * **Existing Patients (`patientType === 'existing'`)**: Booking completion displays a confirmation box with their registered UHID number and clear instructions that pre-registration is not required. A "Done & Close" action button allows completing the booking modal seamlessly.
   * **Reset Behavior**: Switching from Existing Patient back to New Patient automatically resets the UHID input field.
   * **File Modified**: [Appointments.js](file:///d:/Binud%20Files/portfolio/nemcareblog/src/pages/Appointments.js)
+
+---
+
+## 5. Complete Frontend Website Integration Specifications
+For detailed REST API endpoint payloads, request headers, step-by-step UI component flow (Doctor Selection, Schedule Selector, Slot Slab Grouping, Digital Payment QR, and Pre-Registration Redirects), refer to the comprehensive [Frontend Integration Flow Guide](file:///d:/Binud%20Files/portfolio/nemcareblog/src/frontend_integration_guide.md).
 

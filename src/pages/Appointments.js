@@ -37,19 +37,94 @@ const formatSlotRange = (start, end) => {
 };
 
 const isTimeInPast = (dateStr, timeStr) => {
-  if (!timeStr) return false;
+  if (!dateStr || !timeStr) return false;
+
   const todayStr = getTodayDateString();
-  if (dateStr === todayStr) {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMin = now.getMinutes();
+  if (dateStr < todayStr) return true; // Past date -> all times are in past
+  if (dateStr > todayStr) return false; // Future date -> future time slots
 
-    const [slotHour, slotMin] = timeStr.split(':').map(Number);
+  // dateStr === todayStr (compare against current local time)
+  const now = new Date();
+  let hour = 0;
+  let min = 0;
 
-    if (slotHour < currentHour) return true;
-    if (slotHour === currentHour && slotMin < currentMin) return true;
+  const str = String(timeStr).trim().toLowerCase();
+  const isPm = str.includes('pm');
+  const isAm = str.includes('am');
+
+  const clean = str.replace(/am|pm/g, '').trim();
+  const parts = clean.split(':').map(p => parseInt(p, 10));
+
+  if (parts.length >= 1 && !isNaN(parts[0])) {
+    hour = parts[0];
   }
-  return false;
+  if (parts.length >= 2 && !isNaN(parts[1])) {
+    min = parts[1];
+  }
+
+  if (isPm && hour < 12) {
+    hour += 12;
+  }
+  if (isAm && hour === 12) {
+    hour = 0;
+  }
+
+  const slotDate = new Date();
+  slotDate.setHours(hour, min, 0, 0);
+
+  return slotDate < now;
+};
+
+const getMondayOfDate = (d) => {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(date.setDate(diff));
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+};
+
+const getWeekDays = (mondayDate) => {
+  if (!mondayDate) return [];
+  const days = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(mondayDate);
+    d.setDate(mondayDate.getDate() + i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const monthName = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const dayNum = d.getDate();
+    const formattedDisplay = `${dayNum} ${monthName}`;
+    const fullDisplayDate = d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    days.push({
+      dateObj: d,
+      dateStr,
+      dayName,
+      formattedDisplay,
+      fullDisplayDate
+    });
+  }
+  return days;
+};
+
+const formatWeekRange = (mondayDate) => {
+  if (!mondayDate) return '';
+  const satDate = new Date(mondayDate);
+  satDate.setDate(mondayDate.getDate() + 5);
+
+  const monDay = mondayDate.getDate();
+  const monMonth = mondayDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+
+  const satDay = satDate.getDate();
+  const satMonth = satDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+  const satYear = satDate.getFullYear();
+
+  return `${monDay} ${monMonth} – ${satDay} ${satMonth} ${satYear}`;
 };
 
 const Appointments = () => {
@@ -62,6 +137,60 @@ const Appointments = () => {
   // Lookups (for booking form)
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
+
+  // Table Filter & Pagination States
+  const [filterDeptId, setFilterDeptId] = useState('');
+  const [filterDocId, setFilterDocId] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Data Fetching Functions
+  const fetchAppointments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/appointments');
+      if (res.ok) {
+        const json = await res.json();
+        setAppointments(json.data || json);
+      }
+    } catch (err) {
+      console.error('Failed to fetch appointments:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchDepartments = useCallback(async () => {
+    try {
+      const res = await apiFetch('/departments');
+      if (res.ok) {
+        const json = await res.json();
+        setDepartments(json.data || json);
+      }
+    } catch (err) {
+      console.error('Failed to fetch departments:', err);
+    }
+  }, []);
+
+  const fetchDoctors = useCallback(async () => {
+    try {
+      const res = await apiFetch('/doctors');
+      if (res.ok) {
+        const json = await res.json();
+        setDoctors(json.data || json);
+      }
+    } catch (err) {
+      console.error('Failed to fetch doctors:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAppointments();
+    fetchDepartments();
+    fetchDoctors();
+  }, [fetchAppointments, fetchDepartments, fetchDoctors]);
 
   // Booking Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,151 +214,170 @@ const Appointments = () => {
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [countdown, setCountdown] = useState(3);
 
-  // Available slots for selected doc/date
-  const [availableSlots, setAvailableSlots] = useState([]);
-  const [loadingFormSlots, setLoadingFormSlots] = useState(false);
-  const [submittingBooking, setSubmittingBooking] = useState(false);
-
-  // Automatic 3-2-1 countdown stopwatch redirect for new patients
+  // Automatic 3-2-1 Countdown & Redirect for New Patients
   useEffect(() => {
     let timer;
-    if (isModalOpen && bookingStep === 3 && bookingSuccess && patientType === 'new') {
+    if (bookingSuccess && patientType === 'new') {
       setCountdown(3);
       timer = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            window.location.href = 'https://preregistration.nemcare.com';
+            window.location.replace('https://preregistration.nemcare.com');
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
+    } else {
+      setCountdown(3);
     }
+
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isModalOpen, bookingStep, bookingSuccess, patientType]);
+  }, [bookingSuccess, patientType]);
 
-  // Filter States
-  const [filterDeptId, setFilterDeptId] = useState('');
-  const [filterDocId, setFilterDocId] = useState('');
-  const [filterDate, setFilterDate] = useState('');
-  const [filterSearch, setFilterSearch] = useState('');
+  // Weekly schedule states & Navigation
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => getMondayOfDate(new Date()));
+  const [weekSlotsData, setWeekSlotsData] = useState({});
+  const [loadingWeekSlots, setLoadingWeekSlots] = useState(false);
 
-  // Pagination States
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  // Available slots for selected doc/date
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [submittingBooking, setSubmittingBooking] = useState(false);
 
-  // Reset pagination to page 1 on filter changes
+  // Fetch slots for all 6 days (Mon-Sat) of the selected week when doctor or currentWeekStart changes
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filterDeptId, filterDocId, filterDate, filterSearch]);
-
-  // Fetch Appointments List
-  const fetchAppointments = useCallback(async () => {
-    try {
-      const res = await apiFetch('/appointments');
-      if (res.ok) {
-        const json = await res.json();
-        const data = json.data || json;
-        setAppointments(data);
-        localStorage.setItem('nemcare_appointments', JSON.stringify(data));
-      } else {
-        throw new Error('Failed to fetch appointments list');
-      }
-    } catch (err) {
-      console.warn('API connection failed. Using local storage.', err);
-      const local = localStorage.getItem('nemcare_appointments');
-      if (local) {
-        setAppointments(JSON.parse(local));
-      } else {
-        setAppointments([]);
-      }
-    } finally {
-      setLoading(false);
+    if (!bookingDocId || !currentWeekStart) {
+      setWeekSlotsData({});
+      return;
     }
-  }, []);
 
-  // Fetch Lookup Data for Form
-  const fetchLookups = useCallback(async () => {
-    try {
-      const deptsRes = await apiFetch('/departments');
-      const docsRes = await apiFetch('/doctors');
+    const days = getWeekDays(currentWeekStart);
+    setLoadingWeekSlots(true);
 
-      let deptsData = [];
-      let docsData = [];
-
-      if (deptsRes.ok) {
-        const json = await deptsRes.json();
-        deptsData = json.data || json;
-      }
-      if (docsRes.ok) {
-        const json = await docsRes.json();
-        docsData = json.data || json;
-      }
-
-      setDepartments(deptsData);
-      setDoctors(docsData);
-    } catch (err) {
-      console.warn('Lookup fetch failed.', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchAppointments();
-    fetchLookups();
-  }, [fetchAppointments, fetchLookups]);
-
-  // Fetch available slots dynamically when doctor and date change in booking form
-  useEffect(() => {
-    const fetchFormSlots = async () => {
-      if (!bookingDocId || !bookingDate) {
-        setAvailableSlots([]);
-        return;
-      }
-
-      setLoadingFormSlots(true);
-      try {
-        const res = await apiFetch(`/doctors/${bookingDocId}/slots?date=${bookingDate}`);
-        if (res.ok) {
-          const json = await res.json();
-          const slots = (json.data || json).slots || [];
-
-          // Cross-reference with existing local and remote appointments to auto-disable booked slots
-          const processedSlots = slots.map(s => {
-            const isLocalBooked = appointments.some(app =>
-              app.doctor_id === Number(bookingDocId) &&
-              app.date === bookingDate &&
-              (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
-              app.status === 'booked'
-            );
-            const isPast = isTimeInPast(bookingDate, s.start_time);
-
-            if (isLocalBooked) {
-              return { ...s, available: false, is_booked: true };
-            }
-            if (isPast) {
-              return { ...s, available: false, is_past: true };
-            }
-            return s;
-          });
-
-          // Keep all slots (both available and booked) to show them in the UI
-          setAvailableSlots(processedSlots);
-        } else {
-          throw new Error('Failed to fetch slots');
+    Promise.all(
+      days.map(async (day) => {
+        try {
+          const res = await apiFetch(`/doctors/${bookingDocId}/slots?date=${day.dateStr}`);
+          if (res.ok) {
+            const json = await res.json();
+            return { dateStr: day.dateStr, slots: (json.data || json).slots || [] };
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch slots for ${day.dateStr}`, err);
         }
-      } catch (err) {
-        console.warn('API slots fetch failed.', err);
-        setAvailableSlots([]);
-      } finally {
-        setLoadingFormSlots(false);
-      }
-    };
+        return { dateStr: day.dateStr, slots: [] };
+      })
+    ).then((results) => {
+      const map = {};
+      results.forEach(r => {
+        map[r.dateStr] = r.slots;
+      });
+      setWeekSlotsData(map);
+      setLoadingWeekSlots(false);
+    });
+  }, [bookingDocId, currentWeekStart]);
 
-    fetchFormSlots();
-  }, [bookingDocId, bookingDate, appointments]);
+  // Set available slots for selected booking date based on weekSlotsData & appointments
+  useEffect(() => {
+    if (!bookingDocId || !bookingDate || !weekSlotsData[bookingDate]) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    const slots = weekSlotsData[bookingDate] || [];
+    const processedSlots = slots.map(s => {
+      const isLocalBooked = appointments.some(app =>
+        app.doctor_id === Number(bookingDocId) &&
+        app.date === bookingDate &&
+        (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
+        app.status === 'booked'
+      );
+      const isPast = isTimeInPast(bookingDate, s.start_time);
+
+      if (isLocalBooked) {
+        return { ...s, available: false, is_booked: true };
+      }
+      if (isPast) {
+        return { ...s, available: false, is_past: true };
+      }
+      return s;
+    });
+
+    setAvailableSlots(processedSlots);
+  }, [bookingDocId, bookingDate, weekSlotsData, appointments]);
+
+  // Compute status ("Available", "Already booked", "Unavailable") for a given dateStr
+  const getDayStatus = useCallback((dateStr) => {
+    const todayStr = getTodayDateString();
+    if (dateStr < todayStr) return 'Already booked';
+
+    const slots = weekSlotsData[dateStr] || [];
+    if (slots.length === 0) return 'Already booked';
+
+    let availableCount = 0;
+
+    slots.forEach(s => {
+      const isLocalBooked = appointments.some(app =>
+        app.doctor_id === Number(bookingDocId) &&
+        app.date === dateStr &&
+        (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
+        app.status === 'booked'
+      );
+      const isPast = isTimeInPast(dateStr, s.start_time);
+      const isSlotBooked = s.is_booked || isLocalBooked;
+      const isSlotDisabled = s.is_manually_disabled || s.available === false || isPast;
+
+      if (!isSlotBooked && !isSlotDisabled) {
+        availableCount++;
+      }
+    });
+
+    if (availableCount > 0) return 'Available';
+    return 'Already booked';
+  }, [weekSlotsData, appointments, bookingDocId]);
+
+  // Auto-select first available date or reset bookingDate if currently selected date is unavailable
+  useEffect(() => {
+    if (loadingWeekSlots) return;
+    const days = getWeekDays(currentWeekStart);
+
+    if (bookingDate && getDayStatus(bookingDate) !== 'Available') {
+      const firstAvail = days.find(d => getDayStatus(d.dateStr) === 'Available');
+      if (firstAvail) {
+        setBookingDate(firstAvail.dateStr);
+        setBookingSlotId('');
+      } else {
+        setBookingDate('');
+        setBookingSlotId('');
+      }
+    } else if (!bookingDate && days.length > 0) {
+      const firstAvail = days.find(d => getDayStatus(d.dateStr) === 'Available');
+      if (firstAvail) {
+        setBookingDate(firstAvail.dateStr);
+      }
+    }
+  }, [weekSlotsData, loadingWeekSlots, currentWeekStart, bookingDate, getDayStatus]);
+
+  // Navigation handlers for week
+  const handlePrevWeek = () => {
+    const prevMon = new Date(currentWeekStart);
+    prevMon.setDate(prevMon.getDate() - 7);
+    const todayMon = getMondayOfDate(new Date());
+    if (prevMon < todayMon) return;
+    setCurrentWeekStart(prevMon);
+  };
+
+  const handleNextWeek = () => {
+    const nextMon = new Date(currentWeekStart);
+    nextMon.setDate(nextMon.getDate() + 7);
+    setCurrentWeekStart(nextMon);
+  };
+
+  const todayMon = getMondayOfDate(new Date());
+  const isPrevWeekDisabled = currentWeekStart <= todayMon;
 
   // Group slots by master slot ID for hourly expandable view
   const groupedSlots = useMemo(() => {
@@ -509,6 +657,8 @@ const Appointments = () => {
     setUhid('');
     setSymptoms('');
     setAvailableSlots([]);
+    setWeekSlotsData({});
+    setCurrentWeekStart(getMondayOfDate(new Date()));
     setBookingStep(1);
     setBookingSuccess(false);
     setCountdown(3);
@@ -721,7 +871,7 @@ const Appointments = () => {
 
   // Filter Doctors by selected department in the booking form
   const filteredDoctors = bookingDeptId
-    ? doctors.filter(doc => doc.department_id === Number(bookingDeptId))
+    ? doctors.filter(doc => Number(doc.department_id) === Number(bookingDeptId))
     : doctors;
 
   return (
@@ -1130,7 +1280,7 @@ const Appointments = () => {
       {/* Booking Dialog Modal Overlay */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 md:p-8 animate-fade-in space-y-6">
+          <div className="bg-white rounded-3xl border border-slate-200/50 shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 md:p-8 animate-fade-in space-y-6">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
@@ -1148,21 +1298,30 @@ const Appointments = () => {
 
             {/* Step Indicators */}
             {!bookingSuccess && (
-              <div className="flex items-center pb-2 border-b border-slate-100/50 w-full">
+              <div className="relative flex items-center justify-between pb-8 border-b border-slate-100/50 w-full px-6">
+                {/* Continuous Line Behind Circles */}
+                <div className="absolute top-[14px] left-[40px] right-[40px] h-0.5 bg-slate-200 -z-0" />
+                <div
+                  className="absolute top-[14px] left-[40px] h-0.5 bg-emerald-500 transition-all duration-300 -z-0"
+                  style={{
+                    right: bookingStep === 1 ? 'calc(100% - 40px)' : bookingStep === 2 ? '50%' : '40px'
+                  }}
+                />
+
                 {/* Step 1: Select Doctor */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="relative z-10 flex flex-col items-center">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 1
-                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 1
+                      ? 'bg-[#960c0c] text-white'
                       : bookingStep > 1
                         ? 'bg-emerald-500 text-white'
                         : 'bg-slate-100 text-slate-450 border border-slate-200'
                       }`}
                   >
-                    {bookingStep > 1 ? <FiCheck className="text-[10px]" /> : 1}
+                    {bookingStep > 1 ? <FiCheck className="text-xs" /> : 1}
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 1
+                    className={`absolute top-8 text-[10px] font-bold tracking-tight capitalize whitespace-nowrap ${bookingStep === 1
                       ? 'text-[#960c0c]'
                       : bookingStep > 1
                         ? 'text-emerald-500'
@@ -1173,23 +1332,20 @@ const Appointments = () => {
                   </span>
                 </div>
 
-                {/* Connector Line 1 */}
-                <div className={`h-0.5 flex-grow mx-1.5 transition-all duration-300 ${bookingStep > 1 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-
                 {/* Step 2: Patient Details */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="relative z-10 flex flex-col items-center">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 2
-                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 2
+                      ? 'bg-[#960c0c] text-white'
                       : bookingStep > 2
                         ? 'bg-emerald-500 text-white'
                         : 'bg-slate-100 text-slate-450 border border-slate-200'
                       }`}
                   >
-                    {bookingStep > 2 ? <FiCheck className="text-[10px]" /> : 2}
+                    {bookingStep > 2 ? <FiCheck className="text-xs" /> : 2}
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 2
+                    className={`absolute top-8 text-[10px] font-bold tracking-tight capitalize whitespace-nowrap ${bookingStep === 2
                       ? 'text-[#960c0c]'
                       : bookingStep > 2
                         ? 'text-emerald-500'
@@ -1200,21 +1356,18 @@ const Appointments = () => {
                   </span>
                 </div>
 
-                {/* Connector Line 2 */}
-                <div className={`h-0.5 flex-grow mx-1.5 transition-all duration-300 ${bookingStep > 2 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-
                 {/* Step 3: Confirm */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="relative z-10 flex flex-col items-center">
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 3
-                      ? 'bg-[#960c0c] text-white ring-4 ring-[#960c0c]/10'
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black transition-all duration-300 ${bookingStep === 3
+                      ? 'bg-[#960c0c] text-white'
                       : 'bg-slate-100 text-slate-450 border border-slate-200'
                       }`}
                   >
                     3
                   </div>
                   <span
-                    className={`text-[9.5px] font-extrabold tracking-tight uppercase ${bookingStep === 3
+                    className={`absolute top-8 text-[10px] font-bold tracking-tight capitalize whitespace-nowrap ${bookingStep === 3
                       ? 'text-[#960c0c]'
                       : 'text-slate-400'
                       }`}
@@ -1367,7 +1520,7 @@ const Appointments = () => {
                         <FiUser className="text-slate-400 text-xs shrink-0" />
                         <input
                           type="text"
-                          placeholder="e.g. Binud Sharma"
+                          placeholder="e.g. John Sharma"
                           className="w-full pl-3 bg-transparent outline-none text-xs text-slate-800 placeholder-slate-400"
                           value={patientName}
                           onChange={(e) => setPatientName(e.target.value)}
@@ -1406,117 +1559,240 @@ const Appointments = () => {
                       </div>
                     </div>
 
-                    {/* Date selection */}
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Booking Date *</label>
-                      <input
-                        type="date"
-                        className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-3 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                        value={bookingDate}
-                        onChange={(e) => {
-                          setBookingDate(e.target.value);
-                          setBookingSlotId(''); // reset slot
-                        }}
-                        min={getTodayDateString()}
-                      />
-                    </div>
-
-                    {/* Available Slots Select Radio Chips */}
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">
-                        Select Time Slot *
+                    {/* Weekly Schedule View (Option 2 - Horizontal Cards) */}
+                    <div className="space-y-3.5 pt-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Preferred Week *
                       </label>
 
-                      {!bookingDocId || !bookingDate ? (
-                        <p className="text-[11px] text-slate-400 italic">Please select date to view slots.</p>
-                      ) : loadingFormSlots ? (
-                        <p className="text-[11px] text-slate-400 animate-pulse">Checking slot openings...</p>
-                      ) : availableSlots.length === 0 ? (
-                        <div className="p-3 bg-rose-50 border border-rose-100/50 rounded-xl flex items-center gap-2">
-                          <FiInfo className="text-rose-500 text-sm" />
-                          <p className="text-[10px] text-rose-600 font-semibold">No operational slots are available on this date.</p>
+                      {/* Week Navigation Header Bar */}
+                      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl p-2.5 shadow-3xs">
+                        <button
+                          type="button"
+                          onClick={handlePrevWeek}
+                          disabled={isPrevWeekDisabled}
+                          className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+                          title="Previous Week"
+                        >
+                          <FiChevronLeft className="text-sm" />
+                        </button>
+
+                        <div className="flex items-center gap-2 font-extrabold text-slate-800 text-xs tracking-tight">
+                          <FiCalendar className="text-slate-500 text-sm" />
+                          <span>{formatWeekRange(currentWeekStart)}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleNextWeek}
+                          className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition cursor-pointer"
+                          title="Next Week"
+                        >
+                          <FiChevronRight className="text-sm" />
+                        </button>
+                      </div>
+
+                      {/* 6-Day Horizontal Cards Row */}
+                      {loadingWeekSlots ? (
+                        <div className="py-8 text-center text-xs text-slate-400 animate-pulse bg-slate-50/70 rounded-2xl border border-dashed border-slate-200">
+                          Checking doctor schedule...
                         </div>
                       ) : (
-                        <div className="space-y-4">
-                          {/* Hourly Master Slots Grid */}
-                          <div className="grid grid-cols-2 gap-2.5 max-h-[150px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/30">
-                            {groupedSlots.map((group) => {
-                              const isSelected = selectedMasterId === group.master_slot_id;
-                              const isGroupUnavailable = group.slabs.every(s => s.is_booked || s.is_past || !s.available);
-                              return (
-                                <button
-                                  key={group.master_slot_id}
-                                  type="button"
-                                  disabled={isGroupUnavailable}
-                                  onClick={() => {
-                                    setSelectedMasterId(group.master_slot_id);
-                                    const currentSelectedSlab = availableSlots.find(s => String(s.id) === String(bookingSlotId));
-                                    if (!currentSelectedSlab || currentSelectedSlab.master_slot_id !== group.master_slot_id) {
-                                      setBookingSlotId('');
-                                    }
-                                  }}
-                                  className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold transition-all duration-200 select-none ${isGroupUnavailable
-                                    ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-2.5">
+                          {getWeekDays(currentWeekStart).map((day) => {
+                            const status = getDayStatus(day.dateStr);
+                            const isSelected = bookingDate === day.dateStr;
+                            const isAvailable = status === 'Available';
+
+                            return (
+                              <button
+                                key={day.dateStr}
+                                type="button"
+                                disabled={!isAvailable}
+                                onClick={() => {
+                                  if (!isAvailable) return;
+                                  setBookingDate(day.dateStr);
+                                  setBookingSlotId('');
+                                  setSelectedMasterId(null);
+                                }}
+                                style={isSelected ? { background: 'linear-gradient(to right, #fecaca 0%, #ffffff 100%)' } : {}}
+                                className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all duration-200 select-none min-h-[110px] w-full text-left ${!isAvailable
+                                  ? 'opacity-40 bg-slate-100/70 border-slate-200 cursor-not-allowed shadow-none'
+                                  : isSelected
+                                    ? 'border-[#960c0c] text-[#960c0c] font-black shadow-none'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-[#960c0c]/50 hover:bg-slate-50/80 cursor-pointer shadow-none'
+                                  }`}
+                              >
+                                {/* Day Short Name */}
+                                <span
+                                  className={`text-[10px] font-black uppercase tracking-wider ${!isAvailable
+                                    ? 'text-slate-300'
                                     : isSelected
-                                      ? 'bg-slate-800 text-white border-slate-800 shadow-3xs cursor-pointer'
-                                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-355 cursor-pointer'
+                                      ? 'text-[#960c0c]'
+                                      : 'text-slate-400'
                                     }`}
                                 >
-                                  <FiCalendar className="text-[10px] shrink-0" />
-                                  <span className="text-[10px] tracking-tight text-center font-bold">
-                                    {formatSlotRange(group.master_start_time, group.master_end_time)}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
+                                  {day.dayName}
+                                </span>
 
-                          {/* 15-Minute Slabs for the Selected Hour */}
-                          {selectedMasterId && (
-                            <div className="animate-fade-in space-y-2">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                                Select 15-Minute Slab *
-                              </label>
-                              <div className="grid grid-cols-2 gap-2 max-h-[120px] overflow-y-auto p-1 border border-slate-100 rounded-xl bg-white shadow-3xs">
-                                {(groupedSlots.find(g => g.master_slot_id === selectedMasterId)?.slabs || []).map((slot) => {
-                                  const isSlabSelected = bookingSlotId === String(slot.id);
-                                  const isBooked = slot.is_booked;
-                                  const isPast = slot.is_past;
-                                  const isUnavailable = isBooked || isPast || !slot.available;
+                                {/* Date Display */}
+                                <span className={`text-xs font-bold my-0.5 ${!isAvailable ? 'text-slate-400' : isSelected ? 'text-[#960c0c]' : 'text-slate-800'}`}>
+                                  {day.formattedDisplay}
+                                </span>
+
+                                {/* Status Icon */}
+                                {isAvailable ? (
+                                  <FiCheckCircle className={`text-lg my-1 shrink-0 ${isSelected ? 'text-[#960c0c]' : 'text-emerald-500'}`} />
+                                ) : (
+                                  <FiXCircle className="text-rose-400 text-lg my-1 shrink-0" />
+                                )}
+
+                                {/* Status Label */}
+                                <span
+                                  className={`text-[9.5px] font-extrabold leading-tight text-center ${!isAvailable
+                                    ? 'text-slate-400'
+                                    : isSelected
+                                      ? 'text-[#960c0c]'
+                                      : 'text-emerald-600'
+                                    }`}
+                                >
+                                  {status}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Selected Date Display Banner */}
+                      {bookingDate && getDayStatus(bookingDate) === 'Available' && (
+                        <div className="bg-sky-50/80 border border-sky-100/90 rounded-xl px-4 py-2.5 text-xs font-bold text-sky-900 flex items-center gap-2">
+                          <span className="text-sky-700">Selected Date:</span>
+                          <span className="font-mono text-sky-950 font-black">
+                            {getWeekDays(currentWeekStart).find(d => d.dateStr === bookingDate)?.fullDisplayDate ||
+                              new Date(bookingDate).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Available Slots Section: 1. SELECT TIME SLOT *, 2. SELECT 15-MINUTE SLAB * */}
+                      {bookingDate && getDayStatus(bookingDate) === 'Available' ? (
+                        <div className="space-y-4 pt-2 animate-fade-in">
+                          {/* 1. SELECT TIME SLOT * */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                              SELECT TIME SLOT *
+                            </label>
+
+                            {groupedSlots.length === 0 ? (
+                              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 font-medium">
+                                No time slots configured for this date.
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                {groupedSlots.map((group) => {
+                                  const isGroupPast = isTimeInPast(bookingDate, group.master_end_time);
+                                  const isGroupDisabled = isGroupPast || group.slabs.every(s => {
+                                    const isLocalBooked = appointments.some(app =>
+                                      app.doctor_id === Number(bookingDocId) &&
+                                      app.date === bookingDate &&
+                                      (app.start_time === s.start_time || Number(app.slot_id) === Number(s.id)) &&
+                                      app.status === 'booked'
+                                    );
+                                    return s.available === false || s.is_booked || isLocalBooked || isTimeInPast(bookingDate, s.start_time) || s.is_manually_disabled;
+                                  });
+
+                                  const isMasterSelected = selectedMasterId === group.master_slot_id;
+
                                   return (
-                                    <label
-                                      key={slot.id}
-                                      className={`flex items-center justify-center gap-1.5 p-2 rounded-xl border text-[10px] font-bold transition-all duration-200 select-none ${isUnavailable
-                                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                                        : isSlabSelected
-                                          ? 'bg-[#960c0c]/5 border-[#960c0c] text-[#960c0c] cursor-pointer'
-                                          : 'bg-slate-50/50 border-slate-200 text-slate-700 hover:border-slate-350 cursor-pointer'
+                                    <button
+                                      key={group.master_slot_id}
+                                      type="button"
+                                      disabled={isGroupDisabled}
+                                      onClick={() => {
+                                        if (isGroupDisabled) return;
+                                        setSelectedMasterId(group.master_slot_id);
+                                        setBookingSlotId('');
+                                      }}
+                                      style={isMasterSelected ? { background: 'linear-gradient(to right, #fecaca 0%, #ffffff 100%)' } : {}}
+                                      className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all duration-200 select-none flex items-center justify-center gap-2 ${isGroupDisabled
+                                        ? 'opacity-40 bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                        : isMasterSelected
+                                          ? 'border-[#960c0c] text-[#960c0c] font-black shadow-none cursor-pointer'
+                                          : 'bg-white text-slate-700 border-slate-200/90 hover:border-[#960c0c]/50 hover:bg-slate-50/80 cursor-pointer shadow-none'
                                         }`}
                                     >
-                                      <input
-                                        type="radio"
-                                        name="bookingSlot"
-                                        value={slot.id}
-                                        className="sr-only"
-                                        checked={isSlabSelected}
-                                        disabled={isUnavailable}
-                                        onChange={(e) => !isUnavailable && setBookingSlotId(e.target.value)}
-                                      />
-                                      <FiClock className="text-[9px] shrink-0" />
-                                      <div className="flex flex-col items-center">
-                                        <span className="text-[9px] tracking-tight text-center font-bold">
-                                          {formatSlotRange(slot.start_time, slot.end_time)}
-                                        </span>
-                                        {isBooked && <span className="text-[7.5px] text-rose-500 font-black mt-0.5 leading-none">(Booked)</span>}
-                                      </div>
-                                    </label>
+                                      <FiCalendar className={`text-xs shrink-0 ${isGroupDisabled ? 'text-slate-300' : isMasterSelected ? 'text-[#960c0c]' : 'text-slate-400'}`} />
+                                      <span>{formatSlotRange(group.master_start_time, group.master_end_time)}</span>
+                                    </button>
                                   );
                                 })}
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
+
+                          {/* 2. SELECT 15-MINUTE SLAB * */}
+                          {selectedMasterId && (() => {
+                            const activeMasterGroup = groupedSlots.find(g => g.master_slot_id === selectedMasterId);
+                            if (!activeMasterGroup) return null;
+
+                            return (
+                              <div className="space-y-1.5 pt-1 animate-fade-in">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                  SELECT 15-MINUTE SLAB *
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                  {activeMasterGroup.slabs.map((slot) => {
+                                    const isLocalBooked = appointments.some(app =>
+                                      app.doctor_id === Number(bookingDocId) &&
+                                      app.date === bookingDate &&
+                                      (app.start_time === slot.start_time || Number(app.slot_id) === Number(slot.id)) &&
+                                      app.status === 'booked'
+                                    );
+                                    const isSlotPast = isTimeInPast(bookingDate, slot.start_time);
+                                    const isSlotDisabled = isSlotPast || slot.is_booked || isLocalBooked || slot.is_manually_disabled || slot.available === false;
+                                    const isSlotSelected = bookingSlotId === String(slot.id);
+
+                                    return (
+                                      <button
+                                        key={slot.id}
+                                        type="button"
+                                        disabled={isSlotDisabled}
+                                        onClick={() => {
+                                          if (isSlotDisabled) return;
+                                          setBookingSlotId(String(slot.id));
+                                        }}
+                                        style={isSlotSelected ? { background: 'linear-gradient(to right, #fecaca 0%, #ffffff 100%)' } : {}}
+                                        className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all duration-200 select-none flex items-center justify-center gap-2 ${isSlotDisabled
+                                          ? 'opacity-40 bg-slate-100/70 border-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                          : isSlotSelected
+                                            ? 'border-[#960c0c] text-[#960c0c] font-black shadow-none cursor-pointer'
+                                            : 'bg-white text-slate-700 border-slate-200/90 hover:border-[#960c0c]/50 hover:bg-slate-50/80 cursor-pointer shadow-none'
+                                          }`}
+                                      >
+                                        <FiClock className={`text-xs shrink-0 ${isSlotDisabled ? 'text-slate-300' : isSlotSelected ? 'text-[#960c0c]' : 'text-slate-400'}`} />
+                                        <span>{formatSlotRange(slot.start_time, slot.end_time)}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 font-medium italic">
+                          Please select an available day above (marked in green) to view time slots.
                         </div>
                       )}
+
+                      {/* Info Disclaimer Banner at Bottom */}
+                      <div className="bg-rose-50/60 border border-rose-200/60 rounded-2xl p-3.5 flex items-start sm:items-center gap-2.5 mt-4">
+                        <FiInfo className="text-rose-600 text-base shrink-0 mt-0.5 sm:mt-0" />
+                        <p className="text-[11px] text-rose-800 font-semibold leading-relaxed">
+                          Sundays are closed
+                        </p>
+                      </div>
                     </div>
 
                     <div>
@@ -1652,9 +1928,9 @@ const Appointments = () => {
                       </div>
 
                       <div className="space-y-1.5">
-                        <h3 className="text-base font-black text-slate-800 tracking-tight">Appointment Booked Successfully!</h3>
-                        <p className="text-slate-400 text-xs leading-normal max-w-xs mx-auto">
-                          The patient appointment has been registered in the Nemcare database.
+                        <h3 className="text-base font-black text-slate-800 tracking-tight">Your Appointment Booking is Successful!</h3>
+                        <p className="text-slate-500 text-xs font-semibold leading-normal max-w-xs mx-auto">
+                          Pre-registration is mandatory for new patients.
                         </p>
                       </div>
 
@@ -1696,16 +1972,14 @@ const Appointments = () => {
                           <div className="flex flex-col items-center gap-2 pt-1 w-full">
                             <a
                               href="https://preregistration.nemcare.com"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                window.location.replace('https://preregistration.nemcare.com');
+                              }}
                               className="bg-[#960c0c] hover:bg-[#800a0a] text-white font-extrabold text-xs px-6 py-2.5 rounded-xl shadow-xs transition duration-150 cursor-pointer flex items-center justify-center gap-2 w-full"
                             >
                               <span>Redirect Now</span>
                               <FiArrowRight className="text-xs" />
-                            </a>
-                            <a
-                              href="https://preregistration.nemcare.com"
-                              className="text-slate-400 hover:text-[#960c0c] font-semibold text-[11px] underline decoration-1 transition duration-150"
-                            >
-                              Click here if not redirected automatically
                             </a>
                           </div>
                         </div>
