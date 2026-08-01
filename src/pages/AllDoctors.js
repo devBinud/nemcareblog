@@ -8,6 +8,7 @@ import {
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
+import { useAuth } from '../context/AuthContext';
 
 
 const formatTimeTo12Hour = (timeStr) => {
@@ -29,6 +30,8 @@ const formatSlotRange = (start, end) => {
 
 const AllDoctors = () => {
   const { toasts, removeToast, success, error } = useToast();
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
 
   // Core Lists
   const [departments, setDepartments] = useState([]);
@@ -280,12 +283,14 @@ const AllDoctors = () => {
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">Doctors</h1>
           <p className="text-slate-400 text-xs mt-1">Review active doctors, modify details, and configure master booking slots.</p>
         </div>
-        <Link
-          to="/doctors/new"
-          className="px-4 py-2.5 bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 shadow-md shadow-red-950/10 cursor-pointer w-fit"
-        >
-          <FiBriefcase className="text-sm" /> Add Doctor
-        </Link>
+        {isAdmin && (
+          <Link
+            to="/doctors/new"
+            className="px-4 py-2.5 bg-[#960c0c] hover:bg-[#c51c1c] text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 shadow-md shadow-red-950/10 cursor-pointer w-fit"
+          >
+            <FiBriefcase className="text-sm" /> Add Doctor
+          </Link>
+        )}
       </div>
 
       {/* Search and Controls */}
@@ -314,7 +319,7 @@ const AllDoctors = () => {
         <p className="text-xs text-slate-400 animate-pulse py-6">Loading doctors...</p>
       ) : filteredDoctors.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-3xl border border-slate-100 p-6">
-          <p className="text-xs text-slate-450 font-medium">No doctors registered. Click 'Add Doctor' to register one.</p>
+          <p className="text-xs text-slate-450 font-medium">No doctors registered.</p>
         </div>
       ) : (
         <div className="bg-white rounded-3xl border border-slate-100/20 p-5 md:p-6 shadow-[0_8px_30px_rgba(15,23,42,0.012)]">
@@ -374,32 +379,36 @@ const AllDoctors = () => {
                             <FiEye className="text-xs" /> View
                           </button>
 
-                          {/* Slots */}
-                          <button
-                            onClick={() => openSlotsModal(doc)}
-                            className="px-2.5 py-1.5 border border-slate-200 text-slate-650 hover:text-[#960c0c] hover:bg-red-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
-                            title="Assign Default Slots"
-                          >
-                            <FiClock className="text-xs" /> Slots
-                          </button>
+                          {isAdmin && (
+                            <>
+                              {/* Slots */}
+                              <button
+                                onClick={() => openSlotsModal(doc)}
+                                className="px-2.5 py-1.5 border border-slate-200 text-slate-650 hover:text-[#960c0c] hover:bg-red-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
+                                title="Assign Default Slots"
+                              >
+                                <FiClock className="text-xs" /> Slots
+                              </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => openEditModal(doc)}
-                            className="px-2.5 py-1.5 border border-slate-200 text-slate-655 hover:text-[#960c0c] hover:bg-red-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
-                            title="Edit Doctor Details"
-                          >
-                            <FiEdit2 className="text-xs" /> Edit
-                          </button>
+                              {/* Edit */}
+                              <button
+                                onClick={() => openEditModal(doc)}
+                                className="px-2.5 py-1.5 border border-slate-200 text-slate-655 hover:text-[#960c0c] hover:bg-red-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
+                                title="Edit Doctor Details"
+                              >
+                                <FiEdit2 className="text-xs" /> Edit
+                              </button>
 
-                          {/* Delete */}
-                          <button
-                            onClick={() => handleDeleteDoctor(doc.id, doc.name)}
-                            className="px-2.5 py-1.5 border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
-                            title="Delete Profile"
-                          >
-                            <FiTrash2 className="text-xs" /> Delete
-                          </button>
+                              {/* Delete */}
+                              <button
+                                onClick={() => handleDeleteDoctor(doc.id, doc.name)}
+                                className="px-2.5 py-1.5 border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1.5 shadow-3xs text-[10px] font-bold"
+                                title="Delete Profile"
+                              >
+                                <FiTrash2 className="text-xs" /> Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

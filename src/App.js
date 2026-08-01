@@ -34,24 +34,61 @@ function App() {
       >
         <Route index element={<Appointments />} />
         <Route path="appointments" element={<Appointments />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="users" element={<Users />} />
-        <Route path="/blogs/new" element={<AddBlogs />} />
+        <Route path="dashboard" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Dashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="users" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Users />
+          </ProtectedRoute>
+        } />
+        <Route path="/blogs/new" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AddBlogs />
+          </ProtectedRoute>
+        } />
         <Route path="/blogs/:id" element={<BlogDetails />} />
-        <Route path="/blogs/edit/:id" element={<EditBlogs />} />
-        <Route path="/blogs" element={<AllBlogs />} />
+        <Route path="/blogs/edit/:id" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <EditBlogs />
+          </ProtectedRoute>
+        } />
+        <Route path="/blogs" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AllBlogs />
+          </ProtectedRoute>
+        } />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/signup" element={<Signup />} />
+        <Route path="/signup" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Signup />
+          </ProtectedRoute>
+        } />
         <Route path="departments" element={<AllDepartments />} />
-        <Route path="departments/new" element={<AddDepartment />} />
+        <Route path="departments/new" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AddDepartment />
+          </ProtectedRoute>
+        } />
         <Route path="doctors" element={<AllDoctors />} />
-        <Route path="doctors/new" element={<AddDoctor />} />
-        <Route path="slots" element={<ManageSlots />} />
+        <Route path="doctors/new" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AddDoctor />
+          </ProtectedRoute>
+        } />
+        <Route path="slots" element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <ManageSlots />
+          </ProtectedRoute>
+        } />
         <Route path="availability" element={<DoctorAvailability />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );
 }
+
 
 export default App;

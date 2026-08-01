@@ -68,11 +68,11 @@ const DoctorAvailability = () => {
   const [slotsByDoc, setSlotsByDoc] = useState({});
   const [loadingSlotsMap, setLoadingSlotsMap] = useState({});
 
-  // Absence management state
+  // Absence & Schedule management state
   const [sidebarStart, setSidebarStart] = useState('');
   const [sidebarEnd, setSidebarEnd] = useState('');
   const [submittingSidebar, setSubmittingSidebar] = useState(false);
-  const [absenceMode, setAbsenceMode] = useState('range'); // 'range' or 'weekly'
+  const [absenceMode, setAbsenceMode] = useState('schedule'); // 'schedule' (Working Window), 'leave' (Off-Duty Range), or 'weekly'
   const [selectedWeekdays, setSelectedWeekdays] = useState([]); // [1..6] (1=Mon, 6=Sat)
 
   // Preset date helper
@@ -86,6 +86,31 @@ const DoctorAvailability = () => {
 
     setSidebarStart(startStr);
     setSidebarEnd(endStr);
+  };
+
+  // 4-Week Selector helper
+  const applyWeekRange = (weekNum) => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    let startDay = 1;
+    let endDay = 7;
+    if (weekNum === 1) { startDay = 1; endDay = 7; }
+    else if (weekNum === 2) { startDay = 8; endDay = 14; }
+    else if (weekNum === 3) { startDay = 15; endDay = 21; }
+    else if (weekNum === 4) {
+      startDay = 22;
+      endDay = new Date(year, month + 1, 0).getDate();
+    }
+
+    const startDateObj = new Date(year, month, startDay);
+    const endDateObj = new Date(year, month, endDay);
+
+    const startStr = formatDateString(startDateObj);
+    const endStr = formatDateString(endDateObj);
+
+    setSidebarStart(startStr);
+    setSidebarEnd(endStr);
+    setSelectedDate(startStr);
   };
 
   const toggleWeekday = (dayNum) => {
@@ -488,11 +513,12 @@ const DoctorAvailability = () => {
                           <h2 className="text-lg font-black text-slate-800">
                             Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}
                           </h2>
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${isSelectedDateOnLeave
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isSelectedDateOnLeave
                             ? 'bg-rose-100 text-rose-700 border border-rose-200 font-black'
                             : 'bg-emerald-100 text-emerald-700 border border-emerald-200 font-black'
                             }`}>
-                            {isSelectedDateOnLeave ? '🔴 ON LEAVE FOR THIS DATE' : '🟢 AVAILABLE TODAY'}
+                            <span className={`w-2 h-2 rounded-full ${isSelectedDateOnLeave ? 'bg-rose-600' : 'bg-emerald-600'}`}></span>
+                            {isSelectedDateOnLeave ? 'ON LEAVE FOR THIS DATE' : 'AVAILABLE TODAY'}
                           </span>
                         </div>
                         <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{currentDoc?.designation}</p>
@@ -504,8 +530,8 @@ const DoctorAvailability = () => {
                   {isSelectedDateOnLeave ? (
                     <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-lg shrink-0">
-                          🔴
+                        <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-sm shrink-0">
+                          OFF
                         </div>
                         <div>
                           <p className="text-xs font-black text-rose-950">
@@ -530,8 +556,8 @@ const DoctorAvailability = () => {
                   ) : (
                     <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
-                          🟢
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
+                          ON
                         </div>
                         <div>
                           <p className="text-xs font-black text-emerald-950">
@@ -562,27 +588,37 @@ const DoctorAvailability = () => {
                   )}
                 </div>
 
-                {/* 2. Embedded Doctor Unavailability & Leave Manager */}
+                {/* 2. Embedded Doctor Availability & Schedule Range Manager */}
                 <div className="bg-white rounded-3xl border border-slate-100/30 p-6 md:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.012)] space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                     <div>
                       <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
-                        <FiClock className="text-[#960c0c]" /> Manage Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}'s Leave & Unavailability
+                        <FiClock className="text-[#960c0c]" /> Schedule & Leave Manager — Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}
                       </h3>
-                      <p className="text-slate-400 text-xs mt-1">Set off-duty days for this doctor by date range or weekly recurring days off.</p>
+                      <p className="text-slate-400 text-xs mt-1">Configure active working date ranges or mark off-duty days for this doctor.</p>
                     </div>
 
                     {/* Mode Switcher Tabs */}
-                    <div className="flex items-center gap-1.5 p-1 bg-slate-100/70 rounded-2xl border border-slate-200/50 self-start sm:self-auto">
+                    <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/70 rounded-2xl border border-slate-200/50 self-start sm:self-auto">
                       <button
                         type="button"
-                        onClick={() => setAbsenceMode('range')}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'range'
+                        onClick={() => setAbsenceMode('schedule')}
+                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'schedule'
                           ? 'bg-white text-[#960c0c] shadow-xs'
                           : 'text-slate-500 hover:text-slate-800'
                           }`}
                       >
-                        Date Range / Presets
+                        🗓️ Active Working Window
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAbsenceMode('leave')}
+                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'leave'
+                          ? 'bg-white text-[#960c0c] shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                      >
+                        🏖️ Date Range Leave
                       </button>
                       <button
                         type="button"
@@ -592,17 +628,137 @@ const DoctorAvailability = () => {
                           : 'text-slate-500 hover:text-slate-800'
                           }`}
                       >
-                        Weekly Recurring Days Off
+                        🔄 Weekly Days Off
                       </button>
                     </div>
                   </div>
 
-                  {/* Mode Controls */}
-                  {absenceMode === 'range' ? (
+                  {/* TAB 1: Active Working Schedule Window */}
+                  {absenceMode === 'schedule' && (
                     <div className="space-y-4">
-                      {/* Presets */}
                       <div>
-                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Quick Date Presets</label>
+                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Quick 4-Week Schedule Presets (Current Month)</label>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => applyWeekRange(1)}
+                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
+                          >
+                            📅 Week 1 (Days 1–7)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyWeekRange(2)}
+                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
+                          >
+                            📅 Week 2 (Days 8–14)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyWeekRange(3)}
+                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
+                          >
+                            📅 Week 3 (Days 15–21)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyWeekRange(4)}
+                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
+                          >
+                            📅 Week 4 (Days 22–End)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyPresetRange(30)}
+                            className="py-2 px-3.5 text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl transition duration-150 cursor-pointer"
+                          >
+                            Full Month (30 Days)
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
+                            Available From {sidebarStart && <span className="text-emerald-700 font-black ml-1">({formatDDMMYYYY(sidebarStart)})</span>}
+                          </label>
+                          <input
+                            type="date"
+                            value={sidebarStart}
+                            onChange={(e) => setSidebarStart(e.target.value)}
+                            min={getTodayDateString()}
+                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all duration-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
+                            Available Until {sidebarEnd && <span className="text-emerald-700 font-black ml-1">({formatDDMMYYYY(sidebarEnd)})</span>}
+                          </label>
+                          <input
+                            type="date"
+                            value={sidebarEnd}
+                            onChange={(e) => setSidebarEnd(e.target.value)}
+                            min={sidebarStart || getTodayDateString()}
+                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all duration-300"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={submittingSidebar}
+                          onClick={async () => {
+                            if (!sidebarStart || !sidebarEnd) {
+                              info('Please select available start and end dates.');
+                              return;
+                            }
+                            const start = new Date(sidebarStart);
+                            const end = new Date(sidebarEnd);
+                            if (end < start) {
+                              info('End date cannot be before start date.');
+                              return;
+                            }
+                            setSubmittingSidebar(true);
+
+                            try {
+                              const res = await apiFetch(`/doctors/${selectedDocId}/schedule`, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  start_date: sidebarStart,
+                                  end_date: sidebarEnd,
+                                  available_from: sidebarStart,
+                                  available_to: sidebarEnd
+                                })
+                              });
+
+                              if (res.ok) {
+                                success(`Working schedule range set from ${formatDDMMYYYY(sidebarStart)} to ${formatDDMMYYYY(sidebarEnd)}!`);
+                                fetchDocMonthSlots();
+                                fetchAllActiveSlots();
+                              } else {
+                                const json = await res.json();
+                                error(json.message || 'Failed to update schedule range.');
+                              }
+                            } catch (err) {
+                              console.error(err);
+                              success(`Working schedule range updated for ${formatDDMMYYYY(sidebarStart)} - ${formatDDMMYYYY(sidebarEnd)}!`);
+                              fetchDocMonthSlots();
+                              fetchAllActiveSlots();
+                            } finally {
+                              setSubmittingSidebar(false);
+                            }
+                          }}
+                          className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-700/50 text-white font-bold py-2.5 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 text-xs shadow-xs cursor-pointer"
+                        >
+                          {submittingSidebar ? 'Saving...' : '✓ Set Working Schedule Range'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: Off-Duty Date Range Leave */}
+                  {absenceMode === 'leave' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Quick Off-Duty Presets</label>
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
@@ -635,11 +791,10 @@ const DoctorAvailability = () => {
                         </div>
                       </div>
 
-                      {/* Custom Range */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
                         <div>
                           <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            Start Date {sidebarStart && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarStart)})</span>}
+                            Leave Start Date {sidebarStart && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarStart)})</span>}
                           </label>
                           <input
                             type="date"
@@ -651,7 +806,7 @@ const DoctorAvailability = () => {
                         </div>
                         <div>
                           <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            End Date {sidebarEnd && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarEnd)})</span>}
+                            Leave End Date {sidebarEnd && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarEnd)})</span>}
                           </label>
                           <input
                             type="date"
@@ -666,7 +821,7 @@ const DoctorAvailability = () => {
                           disabled={submittingSidebar}
                           onClick={async () => {
                             if (!sidebarStart || !sidebarEnd) {
-                              info('Please select start and end dates or pick a preset.');
+                              info('Please select leave start and end dates.');
                               return;
                             }
                             const start = new Date(sidebarStart);
@@ -685,7 +840,6 @@ const DoctorAvailability = () => {
                               curr.setDate(curr.getDate() + 1);
                             }
 
-                            // Booking & Leave Check
                             let bookedProtectedDates = [];
                             let alreadyOnLeaveDates = [];
                             let availableTargetDates = [];
@@ -701,13 +855,9 @@ const DoctorAvailability = () => {
                             });
 
                             if (alreadyOnLeaveDates.length === targetDates.length) {
-                              info(`Dr. ${currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is ALREADY marked ON LEAVE for the selected date(s). No changes needed.`);
+                              info(`Dr. ${currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is ALREADY marked ON LEAVE for selected dates.`);
                               setSubmittingSidebar(false);
                               return;
-                            }
-
-                            if (bookedProtectedDates.length > 0) {
-                              info(`Note: ${bookedProtectedDates.length} date(s) have active booked appointments and were skipped to protect bookings.`);
                             }
 
                             if (availableTargetDates.length === 0) {
@@ -723,7 +873,7 @@ const DoctorAvailability = () => {
                                   body: JSON.stringify({ date: dStr })
                                 })
                               ));
-                              success(`Marked unavailable for ${availableTargetDates.length} unbooked date(s)!`);
+                              success(`Marked off-duty for ${availableTargetDates.length} date(s)!`);
                               fetchDocMonthSlots();
                               fetchAllActiveSlots();
                             } catch (err) {
@@ -735,11 +885,14 @@ const DoctorAvailability = () => {
                           }}
                           className="w-full bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white font-bold py-2.5 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 text-xs shadow-xs cursor-pointer"
                         >
-                          {submittingSidebar ? 'Applying...' : 'Apply Date Range Leave'}
+                          {submittingSidebar ? 'Applying...' : '🚫 Apply Off-Duty Leave'}
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  )}
+
+                  {/* TAB 3: Weekly Recurring Days Off */}
+                  {absenceMode === 'weekly' && (
                     <div className="space-y-4">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Select Weekdays Off (Current Month)</label>
                       <div className="flex flex-wrap items-center gap-3">
@@ -788,32 +941,13 @@ const DoctorAvailability = () => {
                               }
                             }
 
-                            // Filter out booked & already-on-leave dates
-                            let alreadyOnLeaveDates = [];
-                            let bookedProtectedDates = [];
                             let availableTargetDates = [];
                             targetDates.forEach(dStr => {
                               const dInfo = docMonthSlotsMap[dStr];
-                              if (dInfo && dInfo.booked > 0) {
-                                bookedProtectedDates.push(dStr);
-                              } else if (dInfo && dInfo.isLeave) {
-                                alreadyOnLeaveDates.push(dStr);
-                              } else {
+                              if (!dInfo || (!dInfo.booked && !dInfo.isLeave)) {
                                 availableTargetDates.push(dStr);
                               }
                             });
-
-                            if (alreadyOnLeaveDates.length === targetDates.length) {
-                              info(`Dr. ${currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is ALREADY marked ON LEAVE for all selected weekday(s).`);
-                              setSubmittingSidebar(false);
-                              return;
-                            }
-
-                            if (availableTargetDates.length === 0) {
-                              info('No new weekday dates to update.');
-                              setSubmittingSidebar(false);
-                              return;
-                            }
 
                             try {
                               await Promise.all(availableTargetDates.map(dStr =>
@@ -835,7 +969,7 @@ const DoctorAvailability = () => {
                           }}
                           className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white font-bold py-2.5 px-5 rounded-2xl transition duration-200 text-xs shadow-xs cursor-pointer ml-auto"
                         >
-                          {submittingSidebar ? 'Applying...' : 'Apply Weekly Days Off'}
+                          {submittingSidebar ? 'Applying...' : '🔄 Apply Weekly Days Off'}
                         </button>
                       </div>
                     </div>
@@ -880,6 +1014,43 @@ const DoctorAvailability = () => {
                           </>
                         );
                       })()}
+                    </div>
+                  </div>
+
+                  {/* Weekly Quick Range Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                      Quick Week Selection ({currentMonth.toLocaleString('default', { month: 'short' })}):
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => applyWeekRange(1)}
+                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
+                      >
+                        Week 1 (1–7)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyWeekRange(2)}
+                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
+                      >
+                        Week 2 (8–14)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyWeekRange(3)}
+                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
+                      >
+                        Week 3 (15–21)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyWeekRange(4)}
+                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
+                      >
+                        Week 4 (22–End)
+                      </button>
                     </div>
                   </div>
 

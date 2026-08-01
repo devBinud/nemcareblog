@@ -5,7 +5,7 @@ import { FiMenu, FiLogOut } from 'react-icons/fi';
 import logo from '../../src/assets/img/logo.png';
 
 const Header = ({ toggleSidebar }) => {
-  const { logout } = useAuth();
+  const { logout, role } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -14,25 +14,29 @@ const Header = ({ toggleSidebar }) => {
     navigate('/login');
   };
 
+  const isReceptionist = role === 'receptionist';
+
   // Determine page title dynamically
-  let currentTitle = 'Admin Console';
+  let currentTitle = 'Control Panel';
   const path = location.pathname;
   if (path === '/') {
-    currentTitle = 'Dashboard';
+    currentTitle = isReceptionist ? 'Appointments Portal' : 'Appointments Dashboard';
+  } else if (path === '/availability') {
+    currentTitle = 'Doctor Availability Calendar';
   } else if (path === '/users') {
-    currentTitle = 'Authors';
+    currentTitle = 'Authors & Users';
   } else if (path === '/blogs/new') {
-    currentTitle = 'Create Post';
+    currentTitle = 'Create Blog Post';
   } else if (path === '/blogs') {
-    currentTitle = 'All Blogs';
+    currentTitle = 'All Blog Posts';
   } else if (path.includes('/blogs/edit/')) {
-    currentTitle = 'Edit Post';
+    currentTitle = 'Edit Blog Post';
   } else if (path.includes('/blogs/')) {
     currentTitle = 'Article Details';
   } else if (path === '/profile') {
-    currentTitle = 'Admin Profile';
+    currentTitle = 'My Profile';
   } else if (path === '/signup') {
-    currentTitle = 'Register Admin';
+    currentTitle = 'Create Receptionist Account';
   } else if (path === '/departments') {
     currentTitle = 'All Departments';
   } else if (path === '/departments/new') {
@@ -40,7 +44,11 @@ const Header = ({ toggleSidebar }) => {
   } else if (path === '/doctors') {
     currentTitle = 'All Doctors';
   } else if (path === '/doctors/new') {
-    currentTitle = 'Add Doctor';
+    currentTitle = 'Add Doctor Profile';
+  } else if (path === '/slots') {
+    currentTitle = 'Master Time Slots';
+  } else if (path === '/dashboard') {
+    currentTitle = 'System Dashboard';
   }
 
   return (
@@ -62,8 +70,8 @@ const Header = ({ toggleSidebar }) => {
         className="h-8 md:hidden object-contain"
       />
 
-      {/* Title & Search bar */}
-      <div className="hidden md:flex items-center gap-8">
+      {/* Title */}
+      <div className="hidden md:flex items-center gap-3">
         <h1 className="text-xl font-bold text-slate-800 tracking-tight">
           {currentTitle}
         </h1>
