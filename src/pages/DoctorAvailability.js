@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+
 import { FiUser, FiClock, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
@@ -72,8 +73,11 @@ const DoctorAvailability = () => {
   const [sidebarStart, setSidebarStart] = useState('');
   const [sidebarEnd, setSidebarEnd] = useState('');
   const [submittingSidebar, setSubmittingSidebar] = useState(false);
-  const [absenceMode, setAbsenceMode] = useState('schedule'); // 'schedule' (Working Window), 'leave' (Off-Duty Range), or 'weekly'
+  const [absenceMode, setAbsenceMode] = useState('schedule'); // 'schedule', 'leave', 'weekly', or 'daywise'
   const [selectedWeekdays, setSelectedWeekdays] = useState([]); // [1..6] (1=Mon, 6=Sat)
+  const [selectedMultiDates, setSelectedMultiDates] = useState([]); // Multi-selected dates for batch operations
+  const [explicitWorkingDates, setExplicitWorkingDates] = useState([]); // Extra dates marked working via Month Calendar
+
 
   // Preset date helper
   const applyPresetRange = (daysCount) => {
@@ -111,6 +115,50 @@ const DoctorAvailability = () => {
     setSidebarStart(startStr);
     setSidebarEnd(endStr);
     setSelectedDate(startStr);
+  };
+
+  // Set active week/schedule range & automatically mark rest dates off-duty
+  const handleApplyWorkingWeek = async (docId, startStr, endStr) => {
+    if (!docId || !startStr || !endStr) {
+      info('Please select start and end dates.');
+      return;
+    }
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    if (end < start) {
+      info('End date cannot be before start date.');
+      return;
+    }
+    setSubmittingSidebar(true);
+
+    try {
+      await apiFetch(`/doctors/${docId}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({
+          start_date: startStr,
+          end_date: endStr,
+          available_from: startStr,
+          available_to: endStr
+        })
+      });
+
+      success(`Active Working Schedule set (${formatDDMMYYYY(startStr)} - ${formatDDMMYYYY(endStr)})!`);
+      setSidebarStart(startStr);
+      setSidebarEnd(endStr);
+      const todayStr = getTodayDateString();
+      const focusDate = (startStr <= todayStr && endStr >= todayStr) ? todayStr : (startStr < todayStr ? todayStr : startStr);
+      setSelectedDate(focusDate);
+      fetchDoctors();
+      fetchDocMonthSlots();
+      fetchAllActiveSlots();
+      fetchSingleDoctorSlots(docId, focusDate);
+
+    } catch (err) {
+      console.error(err);
+      error('Failed to set working schedule.');
+    } finally {
+      setSubmittingSidebar(false);
+    }
   };
 
   const toggleWeekday = (dayNum) => {
@@ -175,17 +223,24 @@ const DoctorAvailability = () => {
       : doctors;
   }, [doctors, selectedDeptId]);
 
-  // Auto-select doctor option when department changes or selection becomes invalid
-  useEffect(() => {
-    if (filteredDoctors.length > 0) {
-      const isCurrentDocValid = selectedDocId === '' || filteredDoctors.some(doc => doc.id === Number(selectedDocId));
-      if (!isCurrentDocValid) {
-        setSelectedDocId(''); // default to All Doctors
-      }
-    } else {
-      setSelectedDocId('');
+  const cleanDateStr = useCallback((val) => {
+    if (!val) return '';
+    const str = String(val).trim();
+    if (str.includes('T')) {
+      return str.split('T')[0];
     }
-  }, [filteredDoctors, selectedDocId]);
+    const parts = str.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const ddStr = parts[2].substring(0, 2).padStart(2, '0');
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${ddStr}`;
+    }
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return str;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
 
   const formatDateString = useCallback((dateObj) => {
     const yyyy = dateObj.getFullYear();
@@ -196,18 +251,84 @@ const DoctorAvailability = () => {
 
   const formatDDMMYYYY = useCallback((dateVal) => {
     if (!dateVal) return '';
-    const str = String(dateVal);
-    const parts = str.split('-');
+    const clean = cleanDateStr(dateVal);
+    const parts = clean.split('-');
     if (parts.length === 3 && parts[0].length === 4) {
       return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return str;
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}-${month}-${year}`;
-  }, []);
+    return clean;
+  }, [cleanDateStr]);
+
+  // Reusable DatePicker that displays format as DD-MM-YYYY
+  const DatePickerDDMMYYYY = ({ value, onChange, min, className }) => {
+    const formattedDisplay = formatDDMMYYYY(value);
+    const cleanVal = cleanDateStr(value);
+    return (
+      <div className="relative flex items-center w-full">
+        <input
+          type="text"
+          readOnly
+          value={formattedDisplay}
+          placeholder="DD-MM-YYYY"
+          className={`${className} cursor-pointer`}
+        />
+        <input
+          type="date"
+          value={cleanVal}
+          min={min ? cleanDateStr(min) : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+        />
+      </div>
+    );
+  };
+
+
+  // Auto-populate active working schedule range when doctor is selected
+  useEffect(() => {
+    if (!selectedDocId) {
+      setSidebarStart('');
+      setSidebarEnd('');
+      return;
+    }
+    const currentDoc = doctors.find(d => d.id === Number(selectedDocId));
+    if (currentDoc) {
+      if (currentDoc.available_from && currentDoc.available_to) {
+        setSidebarStart(cleanDateStr(currentDoc.available_from));
+        setSidebarEnd(cleanDateStr(currentDoc.available_to));
+      } else if (currentDoc.start_date && currentDoc.end_date) {
+        setSidebarStart(cleanDateStr(currentDoc.start_date));
+        setSidebarEnd(cleanDateStr(currentDoc.end_date));
+      } else {
+        // Default to Week 1 of current month
+        const year = currentMonth.getFullYear();
+        const month = currentMonth.getMonth();
+        const sStr = formatDateString(new Date(year, month, 1));
+        const eStr = formatDateString(new Date(year, month, 7));
+        setSidebarStart(sStr);
+        setSidebarEnd(eStr);
+      }
+    }
+  }, [selectedDocId, doctors, currentMonth, formatDateString, cleanDateStr]);
+
+  // Only sync selectedDate when sidebarStart or sidebarEnd actually change
+  const prevRangeRef = useRef({ start: '', end: '' });
+  useEffect(() => {
+    if (sidebarStart && sidebarEnd) {
+      const cleanStart = cleanDateStr(sidebarStart);
+      const cleanEnd = cleanDateStr(sidebarEnd);
+      if (cleanStart && cleanEnd) {
+        if (prevRangeRef.current.start !== cleanStart || prevRangeRef.current.end !== cleanEnd) {
+          prevRangeRef.current = { start: cleanStart, end: cleanEnd };
+          setSelectedDate(cleanStart);
+        }
+      }
+    }
+  }, [sidebarStart, sidebarEnd, cleanDateStr]);
+
+
+
+
 
   // Calculate grid cells for the monthly calendar
   const filteredCells = useMemo(() => {
@@ -331,12 +452,16 @@ const DoctorAvailability = () => {
               end_time: ms.end_time,
               is_booked: false,
               is_manually_disabled: false,
-              available: true
             }));
           }
+          const hasExplicitDisabled = json.data?.slots?.some(s => s.is_manually_disabled);
           const booked = slots.filter(s => s.is_booked).length;
-          const isLeave = slots.length > 0 && slots.every(s => s.is_booked || s.is_manually_disabled);
-          newMap[dStr] = { booked, isLeave, total: slots.length };
+          const isLeave = !!hasExplicitDisabled && slots.length > 0 && slots.every(s => s.is_booked || s.is_manually_disabled);
+          const isAvailable = slots.length > 0 && slots.some(s => !s.is_booked && !s.is_manually_disabled);
+          newMap[dStr] = { booked, isLeave, isAvailable, total: slots.length };
+
+
+
         }
       } catch (err) {
         console.error(err);
@@ -356,9 +481,11 @@ const DoctorAvailability = () => {
   }, [fetchDocMonthSlots]);
 
   // Fetch slots single doctor helper
-  const fetchSingleDoctorSlots = async (docId) => {
+  const fetchSingleDoctorSlots = useCallback(async (docId, dateVal) => {
+    const targetDate = dateVal || selectedDate;
+    if (!docId || !targetDate) return;
     try {
-      const res = await apiFetch(`/doctors/${docId}/slots?date=${selectedDate}`);
+      const res = await apiFetch(`/doctors/${docId}/slots?date=${targetDate}`);
       if (res.ok) {
         const json = await res.json();
         let slots = (json.data || json).slots || [];
@@ -389,7 +516,14 @@ const DoctorAvailability = () => {
       console.error(err);
       error('Network error. Failed to refresh doctor slots.');
     }
-  };
+  }, [selectedDate, error]);
+
+  useEffect(() => {
+    if (selectedDocId && selectedDate) {
+      fetchSingleDoctorSlots(selectedDocId, selectedDate);
+    }
+  }, [selectedDocId, selectedDate, fetchSingleDoctorSlots]);
+
 
   // Toggle Slot override
   const handleToggleSlot = async (docId, slot, nextDisabledState) => {
@@ -480,7 +614,7 @@ const DoctorAvailability = () => {
               onClick={() => setSelectedDocId('')}
               className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2.5 rounded-xl transition duration-150 cursor-pointer shadow-xs flex items-center gap-2 self-start sm:self-auto"
             >
-              <span>← Back to All Doctors Overview</span>
+              <span>Back to All Doctors Overview</span>
             </button>
           )}
         </div>
@@ -504,98 +638,14 @@ const DoctorAvailability = () => {
 
             return (
               <div className="space-y-8">
-                {/* 1. Doctor Profile Banner */}
-                <div className="bg-white rounded-3xl border border-slate-100/30 p-6 md:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.012)] space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <h2 className="text-lg font-black text-slate-800">
-                            Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}
-                          </h2>
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isSelectedDateOnLeave
-                            ? 'bg-rose-100 text-rose-700 border border-rose-200 font-black'
-                            : 'bg-emerald-100 text-emerald-700 border border-emerald-200 font-black'
-                            }`}>
-                            <span className={`w-2 h-2 rounded-full ${isSelectedDateOnLeave ? 'bg-rose-600' : 'bg-emerald-600'}`}></span>
-                            {isSelectedDateOnLeave ? 'ON LEAVE FOR THIS DATE' : 'AVAILABLE TODAY'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{currentDoc?.designation}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status & Quick Toggle Card for Selected Date */}
-                  {isSelectedDateOnLeave ? (
-                    <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold text-sm shrink-0">
-                          OFF
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-rose-950">
-                            Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is marked ON LEAVE for {formatDDMMYYYY(selectedDate)}
-                          </p>
-                          <p className="text-[11px] text-rose-600 font-medium">
-                            All slots for this date are off-duty. Tap button to mark doctor working & available again.
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await handleSetWholeDayLeave(selectedDocId, selectedDate, false);
-                          fetchDocMonthSlots();
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition duration-150 shadow-xs cursor-pointer shrink-0"
-                      >
-                        ✓ Restore Availability (Mark Working)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
-                          ON
-                        </div>
-                        <div>
-                          <p className="text-xs font-black text-emerald-950">
-                            Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is WORKING / AVAILABLE on {formatDDMMYYYY(selectedDate)}
-                          </p>
-                          <p className="text-[11px] text-emerald-600 font-medium">
-                            Slots are open for patient bookings.
-                          </p>
-                        </div>
-                      </div>
-                      {bookedCount === 0 ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await handleSetWholeDayLeave(selectedDocId, selectedDate, true);
-                            fetchDocMonthSlots();
-                          }}
-                          className="bg-rose-700 hover:bg-rose-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition duration-150 shadow-xs cursor-pointer shrink-0"
-                        >
-                          Mark Absent for {formatDDMMYYYY(selectedDate)}
-                        </button>
-                      ) : (
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl shrink-0">
-                          🔒 {bookedCount} Active Booking(s)
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
                 {/* 2. Embedded Doctor Availability & Schedule Range Manager */}
-                <div className="bg-white rounded-3xl border border-slate-100/30 p-6 md:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.012)] space-y-6">
+
+                <div className="bg-white rounded-3xl border border-slate-100/30 p-6 md:p-7 shadow-[0_8px_30px_rgba(15,23,42,0.012)] space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                     <div>
                       <h3 className="text-base font-bold text-slate-800 tracking-tight flex items-center gap-2">
                         <FiClock className="text-[#960c0c]" /> Schedule & Leave Manager — Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}
                       </h3>
-                      <p className="text-slate-400 text-xs mt-1">Configure active working date ranges or mark off-duty days for this doctor.</p>
                     </div>
 
                     {/* Mode Switcher Tabs */}
@@ -603,32 +653,22 @@ const DoctorAvailability = () => {
                       <button
                         type="button"
                         onClick={() => setAbsenceMode('schedule')}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'schedule'
+                        className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer ${absenceMode === 'schedule'
                           ? 'bg-white text-[#960c0c] shadow-xs'
                           : 'text-slate-500 hover:text-slate-800'
                           }`}
                       >
-                        🗓️ Active Working Window
+                        Active Schedule
                       </button>
                       <button
                         type="button"
-                        onClick={() => setAbsenceMode('leave')}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'leave'
+                        onClick={() => setAbsenceMode('daywise')}
+                        className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer ${absenceMode === 'daywise'
                           ? 'bg-white text-[#960c0c] shadow-xs'
                           : 'text-slate-500 hover:text-slate-800'
                           }`}
                       >
-                        🏖️ Date Range Leave
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAbsenceMode('weekly')}
-                        className={`px-3 py-1.5 text-[10px] font-black rounded-xl transition duration-150 cursor-pointer ${absenceMode === 'weekly'
-                          ? 'bg-white text-[#960c0c] shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                      >
-                        🔄 Weekly Days Off
+                        Month Calendar
                       </button>
                     </div>
                   </div>
@@ -636,467 +676,396 @@ const DoctorAvailability = () => {
                   {/* TAB 1: Active Working Schedule Window */}
                   {absenceMode === 'schedule' && (
                     <div className="space-y-4">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Quick 4-Week Schedule Presets (Current Month)</label>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => applyWeekRange(1)}
-                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
-                          >
-                            📅 Week 1 (Days 1–7)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyWeekRange(2)}
-                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
-                          >
-                            📅 Week 2 (Days 8–14)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyWeekRange(3)}
-                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
-                          >
-                            📅 Week 3 (Days 15–21)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyWeekRange(4)}
-                            className="py-2 px-3.5 text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl transition duration-150 cursor-pointer flex items-center gap-1"
-                          >
-                            📅 Week 4 (Days 22–End)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyPresetRange(30)}
-                            className="py-2 px-3.5 text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 rounded-xl transition duration-150 cursor-pointer"
-                          >
-                            Full Month (30 Days)
-                          </button>
+                      {/* Active Working Window Summary Banner */}
+                      {sidebarStart && sidebarEnd ? (
+                        <div className="bg-emerald-50/90 border border-emerald-200 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse shrink-0"></span>
+                            <div>
+                              <p className="text-xs font-black text-emerald-950">
+                                Active Working Schedule: {formatDDMMYYYY(sidebarStart)} to {formatDDMMYYYY(sidebarEnd)}
+                              </p>
+                              <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                                Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is open for patient appointments during this date range.
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-extrabold text-emerald-800 bg-white px-3 py-1 rounded-xl border border-emerald-200 uppercase shrink-0">
+                            SCHEDULE ACTIVE
+                          </span>
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            Available From {sidebarStart && <span className="text-emerald-700 font-black ml-1">({formatDDMMYYYY(sidebarStart)})</span>}
-                          </label>
-                          <input
-                            type="date"
-                            value={sidebarStart}
-                            onChange={(e) => setSidebarStart(e.target.value)}
-                            min={getTodayDateString()}
-                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all duration-300"
-                          />
+                      ) : (
+                        <div className="bg-amber-50/90 border border-amber-200 p-3.5 rounded-2xl flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-900">
+                            No Active Working Range Set. Select a week below and click Apply Working Schedule.
+                          </span>
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            Available Until {sidebarEnd && <span className="text-emerald-700 font-black ml-1">({formatDDMMYYYY(sidebarEnd)})</span>}
-                          </label>
-                          <input
-                            type="date"
-                            value={sidebarEnd}
-                            onChange={(e) => setSidebarEnd(e.target.value)}
-                            min={sidebarStart || getTodayDateString()}
-                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition-all duration-300"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={submittingSidebar}
-                          onClick={async () => {
-                            if (!sidebarStart || !sidebarEnd) {
-                              info('Please select available start and end dates.');
-                              return;
-                            }
-                            const start = new Date(sidebarStart);
-                            const end = new Date(sidebarEnd);
-                            if (end < start) {
-                              info('End date cannot be before start date.');
-                              return;
-                            }
-                            setSubmittingSidebar(true);
+                      )}
 
-                            try {
-                              const res = await apiFetch(`/doctors/${selectedDocId}/schedule`, {
-                                method: 'POST',
-                                body: JSON.stringify({
-                                  start_date: sidebarStart,
-                                  end_date: sidebarEnd,
-                                  available_from: sidebarStart,
-                                  available_to: sidebarEnd
-                                })
-                              });
+                      {/* Compact Pill Buttons */}
 
-                              if (res.ok) {
-                                success(`Working schedule range set from ${formatDDMMYYYY(sidebarStart)} to ${formatDDMMYYYY(sidebarEnd)}!`);
-                                fetchDocMonthSlots();
-                                fetchAllActiveSlots();
-                              } else {
-                                const json = await res.json();
-                                error(json.message || 'Failed to update schedule range.');
-                              }
-                            } catch (err) {
-                              console.error(err);
-                              success(`Working schedule range updated for ${formatDDMMYYYY(sidebarStart)} - ${formatDDMMYYYY(sidebarEnd)}!`);
-                              fetchDocMonthSlots();
-                              fetchAllActiveSlots();
-                            } finally {
-                              setSubmittingSidebar(false);
-                            }
-                          }}
-                          className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-700/50 text-white font-bold py-2.5 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 text-xs shadow-xs cursor-pointer"
-                        >
-                          {submittingSidebar ? 'Saving...' : '✓ Set Working Schedule Range'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[1, 2, 3, 4, 30].map((pVal) => {
+                          let label = `Week ${pVal} (1–7)`;
+                          let startD = (pVal - 1) * 7 + 1;
+                          let endD = pVal * 7;
+                          const year = currentMonth.getFullYear();
+                          const month = currentMonth.getMonth();
+                          const lastDay = new Date(year, month + 1, 0).getDate();
 
-                  {/* TAB 2: Off-Duty Date Range Leave */}
-                  {absenceMode === 'leave' && (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider block">Quick Off-Duty Presets</label>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => applyPresetRange(1)}
-                            className="py-2 px-4 text-xs font-extrabold bg-slate-50 hover:bg-red-50 hover:text-[#960c0c] border border-slate-200/80 rounded-xl transition duration-150 cursor-pointer text-slate-700"
-                          >
-                            Today Only
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyPresetRange(2)}
-                            className="py-2 px-4 text-xs font-extrabold bg-slate-50 hover:bg-red-50 hover:text-[#960c0c] border border-slate-200/80 rounded-xl transition duration-150 cursor-pointer text-slate-700"
-                          >
-                            Next 2 Days
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyPresetRange(7)}
-                            className="py-2 px-4 text-xs font-extrabold bg-slate-50 hover:bg-red-50 hover:text-[#960c0c] border border-slate-200/80 rounded-xl transition duration-150 cursor-pointer text-slate-700"
-                          >
-                            Next 7 Days
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => applyPresetRange(14)}
-                            className="py-2 px-4 text-xs font-extrabold bg-slate-50 hover:bg-red-50 hover:text-[#960c0c] border border-slate-200/80 rounded-xl transition duration-150 cursor-pointer text-slate-700"
-                          >
-                            Next 14 Days
-                          </button>
-                        </div>
-                      </div>
+                          if (pVal === 1) label = 'Week 1 (1–7)';
+                          if (pVal === 2) label = 'Week 2 (8–14)';
+                          if (pVal === 3) label = 'Week 3 (15–21)';
+                          if (pVal === 4) { endD = lastDay; label = `Week 4 (22–${lastDay})`; }
+                          if (pVal === 30) { startD = 1; endD = lastDay; label = 'Full Month'; }
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            Leave Start Date {sidebarStart && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarStart)})</span>}
-                          </label>
-                          <input
-                            type="date"
-                            value={sidebarStart}
-                            onChange={(e) => setSidebarStart(e.target.value)}
-                            min={getTodayDateString()}
-                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
-                            Leave End Date {sidebarEnd && <span className="text-[#960c0c] font-black ml-1">({formatDDMMYYYY(sidebarEnd)})</span>}
-                          </label>
-                          <input
-                            type="date"
-                            value={sidebarEnd}
-                            onChange={(e) => setSidebarEnd(e.target.value)}
-                            min={sidebarStart || getTodayDateString()}
-                            className="w-full border border-slate-200 bg-slate-50/70 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#960c0c] focus:bg-white transition-all duration-300"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={submittingSidebar}
-                          onClick={async () => {
-                            if (!sidebarStart || !sidebarEnd) {
-                              info('Please select leave start and end dates.');
-                              return;
-                            }
-                            const start = new Date(sidebarStart);
-                            const end = new Date(sidebarEnd);
-                            if (end < start) {
-                              info('End date cannot be before start date.');
-                              return;
-                            }
-                            setSubmittingSidebar(true);
-                            let targetDates = [];
-                            let curr = new Date(start);
-                            while (curr <= end) {
-                              if (curr.getDay() !== 0) {
-                                targetDates.push(formatDateString(curr));
-                              }
-                              curr.setDate(curr.getDate() + 1);
-                            }
+                          const sStr = formatDateString(new Date(year, month, startD));
+                          const eStr = formatDateString(new Date(year, month, endD));
 
-                            let bookedProtectedDates = [];
-                            let alreadyOnLeaveDates = [];
-                            let availableTargetDates = [];
-                            targetDates.forEach(dStr => {
-                              const dInfo = docMonthSlotsMap[dStr];
-                              if (dInfo && dInfo.booked > 0) {
-                                bookedProtectedDates.push(dStr);
-                              } else if (dInfo && dInfo.isLeave) {
-                                alreadyOnLeaveDates.push(dStr);
-                              } else {
-                                availableTargetDates.push(dStr);
-                              }
-                            });
+                          const isActivePreset = sidebarStart === sStr && sidebarEnd === eStr;
 
-                            if (alreadyOnLeaveDates.length === targetDates.length) {
-                              info(`Dr. ${currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} is ALREADY marked ON LEAVE for selected dates.`);
-                              setSubmittingSidebar(false);
-                              return;
-                            }
-
-                            if (availableTargetDates.length === 0) {
-                              info('No new dates to update.');
-                              setSubmittingSidebar(false);
-                              return;
-                            }
-
-                            try {
-                              await Promise.all(availableTargetDates.map(dStr =>
-                                apiFetch(`/doctors/${selectedDocId}/unavailable`, {
-                                  method: 'POST',
-                                  body: JSON.stringify({ date: dStr })
-                                })
-                              ));
-                              success(`Marked off-duty for ${availableTargetDates.length} date(s)!`);
-                              fetchDocMonthSlots();
-                              fetchAllActiveSlots();
-                            } catch (err) {
-                              console.error(err);
-                              error('Failed to update doctor leave.');
-                            } finally {
-                              setSubmittingSidebar(false);
-                            }
-                          }}
-                          className="w-full bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white font-bold py-2.5 px-4 rounded-xl transition duration-200 flex items-center justify-center gap-2 text-xs shadow-xs cursor-pointer"
-                        >
-                          {submittingSidebar ? 'Applying...' : '🚫 Apply Off-Duty Leave'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* TAB 3: Weekly Recurring Days Off */}
-                  {absenceMode === 'weekly' && (
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Select Weekdays Off (Current Month)</label>
-                      <div className="flex flex-wrap items-center gap-3">
-                        {[
-                          { num: 1, label: 'Mon' },
-                          { num: 2, label: 'Tue' },
-                          { num: 3, label: 'Wed' },
-                          { num: 4, label: 'Thu' },
-                          { num: 5, label: 'Fri' },
-                          { num: 6, label: 'Sat' },
-                        ].map((day) => {
-                          const isChecked = selectedWeekdays.includes(day.num);
                           return (
                             <button
-                              key={day.num}
+                              key={pVal}
                               type="button"
-                              onClick={() => toggleWeekday(day.num)}
-                              className={`py-2.5 px-5 rounded-2xl border text-xs font-black transition duration-150 cursor-pointer ${isChecked
-                                ? 'bg-[#960c0c] text-white border-[#960c0c] shadow-xs'
-                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                                }`}
+                              onClick={() => {
+                                setSidebarStart(sStr);
+                                setSidebarEnd(eStr);
+                                const todayStr = getTodayDateString();
+                                const focusDate = (sStr <= todayStr && eStr >= todayStr) ? todayStr : (sStr < todayStr ? todayStr : sStr);
+                                setSelectedDate(focusDate);
+                              }}
+                              className={`px-4 py-2 text-xs font-extrabold rounded-xl border transition cursor-pointer flex items-center gap-1.5 ${
+                                isActivePreset
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                  : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-300'
+                              }`}
                             >
-                              {day.label}
+                              <span>{label}</span>
+                              {isActivePreset && <span className="text-[10px] font-black">✓</span>}
                             </button>
+
                           );
                         })}
+                      </div>
+
+                      {/* Inline Custom Range Controls */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end pt-3 border-t border-slate-100">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
+                            Available From
+                          </label>
+                          <DatePickerDDMMYYYY
+                            value={sidebarStart}
+                            onChange={(val) => setSidebarStart(val)}
+                            min={getTodayDateString()}
+                            className="w-full border border-slate-200 bg-slate-50/60 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider block">
+                            Available Until
+                          </label>
+                          <DatePickerDDMMYYYY
+                            value={sidebarEnd}
+                            onChange={(val) => setSidebarEnd(val)}
+                            min={sidebarStart || getTodayDateString()}
+                            className="w-full border border-slate-200 bg-slate-50/60 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-600 focus:bg-white transition"
+                          />
+                        </div>
 
                         <button
                           type="button"
-                          disabled={submittingSidebar || selectedWeekdays.length === 0}
-                          onClick={async () => {
-                            if (selectedWeekdays.length === 0) {
-                              info('Please select at least one weekday.');
-                              return;
-                            }
-                            setSubmittingSidebar(true);
-                            const year = currentMonth.getFullYear();
-                            const month = currentMonth.getMonth();
-                            const totalDays = new Date(year, month + 1, 0).getDate();
-
-                            let targetDates = [];
-                            for (let i = 1; i <= totalDays; i++) {
-                              const cellDate = new Date(year, month, i);
-                              if (selectedWeekdays.includes(cellDate.getDay())) {
-                                targetDates.push(formatDateString(cellDate));
-                              }
-                            }
-
-                            let availableTargetDates = [];
-                            targetDates.forEach(dStr => {
-                              const dInfo = docMonthSlotsMap[dStr];
-                              if (!dInfo || (!dInfo.booked && !dInfo.isLeave)) {
-                                availableTargetDates.push(dStr);
-                              }
-                            });
-
-                            try {
-                              await Promise.all(availableTargetDates.map(dStr =>
-                                apiFetch(`/doctors/${selectedDocId}/unavailable`, {
-                                  method: 'POST',
-                                  body: JSON.stringify({ date: dStr })
-                                })
-                              ));
-                              success(`Weekly leave applied for ${availableTargetDates.length} date(s)!`);
-                              setSelectedWeekdays([]);
-                              fetchDocMonthSlots();
-                              fetchAllActiveSlots();
-                            } catch (err) {
-                              console.error(err);
-                              error('Failed to apply weekly leave.');
-                            } finally {
-                              setSubmittingSidebar(false);
-                            }
-                          }}
-                          className="bg-[#960c0c] hover:bg-[#c51c1c] disabled:bg-[#960c0c]/50 text-white font-bold py-2.5 px-5 rounded-2xl transition duration-200 text-xs shadow-xs cursor-pointer ml-auto"
+                          disabled={submittingSidebar}
+                          onClick={() => handleApplyWorkingWeek(selectedDocId, sidebarStart, sidebarEnd)}
+                          className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-700/50 text-white font-extrabold py-2 px-4 rounded-xl transition text-xs shadow-xs cursor-pointer"
                         >
-                          {submittingSidebar ? 'Applying...' : '🔄 Apply Weekly Days Off'}
+                          {submittingSidebar ? 'Applying...' : 'Apply Working Schedule'}
                         </button>
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Calendar Grid for this Doctor */}
-                <div className="bg-white rounded-3xl border border-slate-100/30 p-6 md:p-7 shadow-[0_8px_30px_rgba(15,23,42,0.012)] space-y-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-800 tracking-tight">
-                        Select Calendar Date ({currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })})
-                      </h3>
-                      <p className="text-slate-400 text-xs mt-1">
-                        Viewing schedule for date: <span className="font-bold text-slate-700">{formatDDMMYYYY(selectedDate)}</span>
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-3">
-                      {(() => {
-                        const today = new Date();
-                        const isPrevDisabled = currentMonth.getFullYear() < today.getFullYear() ||
-                          (currentMonth.getFullYear() === today.getFullYear() && currentMonth.getMonth() <= today.getMonth());
-                        return (
-                          <>
-                            <button
-                              onClick={handlePrevMonth}
-                              disabled={isPrevDisabled}
-                              className={`p-2.5 border rounded-xl transition duration-200 ${isPrevDisabled
-                                ? 'border-slate-100 text-slate-300 bg-slate-50/50 cursor-not-allowed'
-                                : 'border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer'
-                                }`}
-                            >
-                              <FiChevronLeft />
-                            </button>
-                            <button
-                              onClick={handleNextMonth}
-                              className="p-2.5 border border-slate-200 hover:bg-slate-50 rounded-xl transition duration-200 cursor-pointer text-slate-600"
-                            >
-                              <FiChevronRight />
-                            </button>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
+                  {/* TAB 4: Daywise Availability Calendar (Full Month & Multi-Select) */}
+                  {absenceMode === 'daywise' && (
+                    <div className="space-y-6">
+                      {/* Active Schedule Range Summary Banner */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200/70 rounded-2xl">
+                        <div>
+                          <p className="text-xs font-black text-slate-800">
+                            Monthly Availability Overview — Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''}
+                          </p>
 
-                  {/* Weekly Quick Range Bar */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                      Quick Week Selection ({currentMonth.toLocaleString('default', { month: 'short' })}):
-                    </span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => applyWeekRange(1)}
-                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
-                      >
-                        Week 1 (1–7)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => applyWeekRange(2)}
-                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
-                      >
-                        Week 2 (8–14)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => applyWeekRange(3)}
-                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
-                      >
-                        Week 3 (15–21)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => applyWeekRange(4)}
-                        className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-xl transition cursor-pointer shadow-2xs"
-                      >
-                        Week 4 (22–End)
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* Date Cards Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 gap-3 bg-slate-50/50 p-2.5 rounded-2xl border border-slate-100">
-                    {filteredCells.map((cell, idx) => {
-                      const dateStr = formatDateString(cell.date);
-                      const isSelected = selectedDate === dateStr;
-                      const dateInfo = docMonthSlotsMap[dateStr];
-
-                      let statusBadge = null;
-                      if (loadingMonthSlots && !dateInfo) {
-                        statusBadge = <span className="text-[7.5px] font-bold text-slate-300 animate-pulse mt-1">Loading...</span>;
-                      } else if (dateInfo) {
-                        if (dateInfo.total === 0) {
-                          statusBadge = <span className="text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-slate-150 text-slate-450 border border-slate-200 mt-1">No Slots</span>;
-                        } else if (dateInfo.isLeave) {
-                          statusBadge = <span className="text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 mt-1">On Leave</span>;
-                        } else if (dateInfo.booked > 0) {
-                          statusBadge = <span className="text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 border border-indigo-200 mt-1">{dateInfo.booked} Booked</span>;
-                        } else {
-                          statusBadge = <span className="text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 mt-1">Available</span>;
-                        }
-                      }
-
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() => setSelectedDate(dateStr)}
-                          style={isSelected ? { background: 'linear-gradient(to right, #fecaca 0%, #ffffff 100%)' } : {}}
-                          className={`relative overflow-hidden border rounded-xl p-2.5 flex flex-col items-center justify-center min-h-[90px] select-none transition-all duration-200 cursor-pointer ${isSelected
-                            ? 'border-[#960c0c] text-[#960c0c] font-black shadow-none'
-                            : 'border-slate-200 bg-white text-slate-800 hover:border-[#960c0c]/40 shadow-none'
-                            }`}
-                        >
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-[#960c0c]' : 'text-slate-400'}`}>
-                            {cell.date.toLocaleString('default', { weekday: 'short' })}
-                          </span>
-                          <span className={`text-xl font-black mt-0.5 ${isSelected ? 'text-[#960c0c]' : 'text-slate-800'}`}>
-                            {cell.dayNumber}
-                          </span>
-                          {statusBadge}
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Interactive monthly calendar with multi-select dates for batch availability updates.
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handlePrevMonth}
+                            className="p-2 border border-slate-200 hover:bg-white rounded-xl text-slate-600 transition cursor-pointer"
+                          >
+                            <FiChevronLeft />
+                          </button>
+                          <span className="text-xs font-extrabold text-slate-700 min-w-[120px] text-center">
+                            {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleNextMonth}
+                            className="p-2 border border-slate-200 hover:bg-white rounded-xl text-slate-600 transition cursor-pointer"
+                          >
+                            <FiChevronRight />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Multi-Select Presets */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-100/60 rounded-2xl border border-slate-200/50">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                          Quick Multi-Select Presets:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const year = currentMonth.getFullYear();
+                              const month = currentMonth.getMonth();
+                              const dates = [];
+                              for (let d = 1; d <= 7; d++) {
+                                dates.push(formatDateString(new Date(year, month, d)));
+                              }
+                              setSelectedMultiDates(dates);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-[#960c0c] border border-slate-200 rounded-xl transition shadow-2xs cursor-pointer"
+                          >
+                            Week 1 (1–7)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const year = currentMonth.getFullYear();
+                              const month = currentMonth.getMonth();
+                              const dates = [];
+                              for (let d = 8; d <= 14; d++) {
+                                dates.push(formatDateString(new Date(year, month, d)));
+                              }
+                              setSelectedMultiDates(dates);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-[#960c0c] border border-slate-200 rounded-xl transition shadow-2xs cursor-pointer"
+                          >
+                            Week 2 (8–14)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const year = currentMonth.getFullYear();
+                              const month = currentMonth.getMonth();
+                              const dates = [];
+                              for (let d = 15; d <= 21; d++) {
+                                dates.push(formatDateString(new Date(year, month, d)));
+                              }
+                              setSelectedMultiDates(dates);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-[#960c0c] border border-slate-200 rounded-xl transition shadow-2xs cursor-pointer"
+                          >
+                            Week 3 (15–21)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const year = currentMonth.getFullYear();
+                              const month = currentMonth.getMonth();
+                              const totalDays = new Date(year, month + 1, 0).getDate();
+                              const dates = [];
+                              for (let d = 22; d <= totalDays; d++) {
+                                dates.push(formatDateString(new Date(year, month, d)));
+                              }
+                              setSelectedMultiDates(dates);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-white text-slate-700 hover:text-[#960c0c] border border-slate-200 rounded-xl transition shadow-2xs cursor-pointer"
+                          >
+                            Week 4 (22–End)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const dates = filteredCells.map(c => formatDateString(c.date));
+                              setSelectedMultiDates(dates);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl transition cursor-pointer"
+                          >
+                            Select All Active Days
+                          </button>
+                          {selectedMultiDates.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMultiDates([])}
+                              className="px-3 py-1.5 text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl transition cursor-pointer"
+                            >
+                              Clear ({selectedMultiDates.length})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Batch Operations Bar for Multi-Selected Dates */}
+                      {selectedMultiDates.length > 0 && (
+                        <div className="bg-[#960c0c]/10 border border-[#960c0c]/20 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+                          <div>
+                            <p className="text-xs font-black text-[#960c0c]">
+                              {selectedMultiDates.length} Date(s) Selected for Multi-Update
+                            </p>
+                            <p className="text-[11px] text-slate-600 font-medium">
+                              Choose an action to apply across all selected dates simultaneously.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={submittingSidebar}
+                              onClick={async () => {
+                                setSubmittingSidebar(true);
+                                try {
+                                  await Promise.all(selectedMultiDates.map(dStr =>
+                                    apiFetch(`/doctors/${selectedDocId}/unavailable`, {
+                                      method: 'POST',
+                                      body: JSON.stringify({ date: dStr })
+                                    })
+                                  ));
+                                  setExplicitWorkingDates(prev => prev.filter(d => !selectedMultiDates.includes(d)));
+                                  success(`Marked off-duty for ${selectedMultiDates.length} selected date(s)!`);
+                                  setSelectedMultiDates([]);
+                                  fetchDocMonthSlots();
+                                  fetchAllActiveSlots();
+                                  if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
+                                } catch (err) {
+                                  console.error(err);
+                                  error('Failed to update leave for selected dates.');
+                                } finally {
+                                  setSubmittingSidebar(false);
+                                }
+                              }}
+                              className="bg-[#960c0c] hover:bg-[#c51c1c] text-white font-extrabold text-xs px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+                            >
+                              Mark Off-Duty ({selectedMultiDates.length})
+                            </button>
+                            <button
+                              type="button"
+                              disabled={submittingSidebar}
+                              onClick={async () => {
+                                setSubmittingSidebar(true);
+                                try {
+                                  await Promise.all(selectedMultiDates.map(dStr =>
+                                    apiFetch(`/doctors/${selectedDocId}/available`, {
+                                      method: 'POST',
+                                      body: JSON.stringify({ date: dStr })
+                                    })
+                                  ));
+                                  setExplicitWorkingDates(prev => Array.from(new Set([...prev, ...selectedMultiDates])));
+                                  
+                                  const sortedDates = [...selectedMultiDates].sort();
+                                  if (sortedDates.length > 0) {
+                                    const minSel = sortedDates[0];
+                                    const maxSel = sortedDates[sortedDates.length - 1];
+                                    setSidebarStart(prev => (!prev || minSel < prev ? minSel : prev));
+                                    setSidebarEnd(prev => (!prev || maxSel > prev ? maxSel : prev));
+                                  }
+
+                                  success(`Marked available for ${selectedMultiDates.length} selected date(s)!`);
+                                  setSelectedMultiDates([]);
+                                  fetchDoctors();
+                                  fetchDocMonthSlots();
+                                  fetchAllActiveSlots();
+                                  if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
+                                } catch (err) {
+                                  console.error(err);
+                                  error('Failed to restore availability.');
+                                } finally {
+                                  setSubmittingSidebar(false);
+                                }
+                              }}
+
+                              className="bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+                            >
+                              Mark Working ({selectedMultiDates.length})
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Full Month Calendar Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 gap-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-200/60">
+                        {filteredCells.map((cell, idx) => {
+                          const dateStr = formatDateString(cell.date);
+                          const isMultiSelected = selectedMultiDates.includes(dateStr);
+                          let isWithinActiveRange = false;
+                          if (sidebarStart && sidebarEnd) {
+                            isWithinActiveRange = dateStr >= sidebarStart && dateStr <= sidebarEnd;
+                          }
+
+                          const dateInfo = docMonthSlotsMap[dateStr];
+                          const isExplicitWorking = explicitWorkingDates.includes(dateStr);
+                          const isDayAvailable = (isWithinActiveRange || isExplicitWorking) && !dateInfo?.isLeave;
+
+
+
+                          let statusBadge = null;
+                          if (loadingMonthSlots && !dateInfo) {
+                            statusBadge = <span className="text-[8px] font-bold text-slate-400 animate-pulse mt-1">Loading...</span>;
+                          } else if (dateInfo) {
+                            if (dateInfo.isLeave) {
+                              statusBadge = <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 mt-1">On Leave</span>;
+                            } else if (dateInfo.booked > 0) {
+                              statusBadge = <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 border border-indigo-200 mt-1">{dateInfo.booked} Booked</span>;
+                            } else if (isDayAvailable) {
+                              statusBadge = <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 mt-1">Available</span>;
+                            }
+                          }
+
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => {
+                                if (selectedMultiDates.includes(dateStr)) {
+                                  setSelectedMultiDates(prev => prev.filter(d => d !== dateStr));
+                                } else {
+                                  setSelectedMultiDates(prev => [...prev, dateStr]);
+                                }
+                                setSelectedDate(dateStr);
+                              }}
+                              className={`relative overflow-hidden border rounded-2xl p-3 flex flex-col items-center justify-center min-h-[95px] select-none transition-all duration-150 cursor-pointer ${
+                                isMultiSelected
+                                  ? 'border-[#960c0c] bg-rose-50/60 ring-2 ring-[#960c0c]/40 font-black shadow-xs'
+                                  : isDayAvailable
+                                  ? 'border-emerald-200 bg-emerald-50/40 text-slate-800'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+
+
+                              {isMultiSelected && (
+                                <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-[#960c0c] text-white rounded-full flex items-center justify-center text-[9px] font-black">
+                                  ✓
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${isMultiSelected ? 'text-[#960c0c]' : 'text-slate-400'}`}>
+                                {cell.date.toLocaleString('default', { weekday: 'short' })}
+                              </span>
+                              <span className={`text-xl font-black mt-0.5 ${isMultiSelected ? 'text-[#960c0c]' : 'text-slate-800'}`}>
+                                {cell.dayNumber}
+                              </span>
+                              {statusBadge}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 15-Minute Operational Slots Details for Single Doctor */}
@@ -1111,8 +1080,47 @@ const DoctorAvailability = () => {
                       </p>
                     </div>
 
-                    {/* Quick Summary Metrics Bar */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* Date Selector & Quick Summary Metrics Bar */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-2xl border border-slate-200/80">
+                        <button
+                          type="button"
+                          title="Previous Day"
+                          onClick={() => {
+                            const cur = new Date(selectedDate || getTodayDateString());
+                            cur.setDate(cur.getDate() - 1);
+                            setSelectedDate(formatDateString(cur));
+                          }}
+                          className="p-1.5 border border-slate-200 hover:bg-white rounded-xl text-slate-600 transition cursor-pointer"
+                        >
+                          <FiChevronLeft className="text-xs" />
+                        </button>
+
+                        <div className="min-w-[130px]">
+                          <DatePickerDDMMYYYY
+                            value={selectedDate}
+                            onChange={(val) => setSelectedDate(val)}
+                            className="border-0 bg-transparent px-2 py-1 text-xs font-black text-slate-800 text-center focus:outline-none cursor-pointer"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          title="Next Day"
+                          onClick={() => {
+                            const cur = new Date(selectedDate || getTodayDateString());
+                            cur.setDate(cur.getDate() + 1);
+                            setSelectedDate(formatDateString(cur));
+                          }}
+                          className="p-1.5 border border-slate-200 hover:bg-white rounded-xl text-slate-600 transition cursor-pointer"
+                        >
+                          <FiChevronRight className="text-xs" />
+                        </button>
+                      </div>
+
+
+                      <div className="flex flex-wrap items-center gap-2">
+
                       <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-extrabold">
                         {availableCount} Available
                       </span>
@@ -1131,6 +1139,7 @@ const DoctorAvailability = () => {
                       )}
                     </div>
                   </div>
+                </div>
 
                   {isLoading ? (
                     <p className="text-xs text-slate-400 animate-pulse py-4">Loading operational slot details...</p>

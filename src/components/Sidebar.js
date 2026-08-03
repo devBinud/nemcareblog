@@ -70,19 +70,17 @@ const Sidebar = ({ closeSidebar }) => {
               )}
             </NavLink>
 
-            {!isReceptionist && (
-              <NavLink to="/departments/new" className={linkClasses} onClick={closeSidebar}>
-                {({ isActive }) => (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
-                      <span>Add Department</span>
-                    </div>
-                    <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
-                  </>
-                )}
-              </NavLink>
-            )}
+            <NavLink to="/departments/new" className={linkClasses} onClick={closeSidebar}>
+              {({ isActive }) => (
+                <>
+                  <div className="flex items-center gap-3">
+                    <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
+                    <span>Add Department</span>
+                  </div>
+                  <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                </>
+              )}
+            </NavLink>
 
             <NavLink to="/doctors" end className={linkClasses} onClick={closeSidebar}>
               {({ isActive }) => (
@@ -96,31 +94,30 @@ const Sidebar = ({ closeSidebar }) => {
               )}
             </NavLink>
 
+            <NavLink to="/doctors/new" className={linkClasses} onClick={closeSidebar}>
+              {({ isActive }) => (
+                <>
+                  <div className="flex items-center gap-3">
+                    <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
+                    <span>Add Doctor</span>
+                  </div>
+                  <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                </>
+              )}
+            </NavLink>
+
             {!isReceptionist && (
-              <>
-                <NavLink to="/doctors/new" className={linkClasses} onClick={closeSidebar}>
-                  {({ isActive }) => (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <FiPlusSquare className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
-                        <span>Add Doctor</span>
-                      </div>
-                      <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
-                    </>
-                  )}
-                </NavLink>
-                <NavLink to="/slots" className={linkClasses} onClick={closeSidebar}>
-                  {({ isActive }) => (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <FiClock className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
-                        <span>Master Time Slots</span>
-                      </div>
-                      <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
-                    </>
-                  )}
-                </NavLink>
-              </>
+              <NavLink to="/slots" className={linkClasses} onClick={closeSidebar}>
+                {({ isActive }) => (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <FiClock className={`text-base shrink-0 transition-all duration-300 group-hover:scale-110 ${isActive ? activeIconColor : 'text-slate-400 group-hover:text-slate-650'}`} />
+                      <span>Master Time Slots</span>
+                    </div>
+                    <FiChevronRight className={`text-xs shrink-0 transition-transform duration-300 ${isActive ? activeIconColor : 'text-slate-350 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5'}`} />
+                  </>
+                )}
+              </NavLink>
             )}
           </nav>
         </div>

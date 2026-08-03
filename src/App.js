@@ -68,13 +68,13 @@ function App() {
         } />
         <Route path="departments" element={<AllDepartments />} />
         <Route path="departments/new" element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist']}>
             <AddDepartment />
           </ProtectedRoute>
         } />
         <Route path="doctors" element={<AllDoctors />} />
         <Route path="doctors/new" element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'receptionist']}>
             <AddDoctor />
           </ProtectedRoute>
         } />
