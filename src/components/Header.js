@@ -21,7 +21,7 @@ const Header = ({ toggleSidebar }) => {
   const path = location.pathname;
   if (path === '/') {
     currentTitle = isReceptionist ? 'Appointments Portal' : 'Appointments Dashboard';
-  } else if (path === '/availability') {
+  } else if (path.startsWith('/availability')) {
     currentTitle = 'Doctor Availability Calendar';
   } else if (path === '/users') {
     currentTitle = 'Authors & Users';

@@ -2,39 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 
 import { 
-  FiPlus, FiUser, FiClock, FiBookOpen, FiChevronDown, FiChevronUp, FiCheck 
+  FiPlus, FiUser, FiBookOpen, FiChevronDown, FiChevronUp 
 } from 'react-icons/fi';
 import { apiFetch } from '../utils/api';
 import useToast from '../hooks/useToast';
 import { ToastContainer } from '../components/Toast';
-
-const formatTimeTo12Hour = (timeStr) => {
-  if (!timeStr) return '';
-  const parts = timeStr.split(':');
-  if (parts.length < 2) return timeStr;
-  const hour = parseInt(parts[0], 10);
-  const minStr = parts[1];
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${displayHour}:${minStr} ${ampm}`;
-};
-
-const formatSlotRange = (start, end) => {
-  if (!start) return '';
-  if (!end) return formatTimeTo12Hour(start);
-  return `${formatTimeTo12Hour(start)} - ${formatTimeTo12Hour(end)}`;
-};
 
 const AddDoctor = () => {
   const { toasts, removeToast, success, error } = useToast();
 
   // Core Lookups
   const [departments, setDepartments] = useState([]);
-  const [masterSlots, setMasterSlots] = useState([]);
 
   // Form Section toggles
   const [showAdvancedAdd, setShowAdvancedAdd] = useState(false);
-  const [showSlotsAdd, setShowSlotsAdd] = useState(false);
 
   // Form States
   const [name, setName] = useState('');
@@ -48,25 +29,15 @@ const AddDoctor = () => {
   const [previousExperience, setPreviousExperience] = useState('');
   const [areasOfExpertise, setAreasOfExpertise] = useState('');
   const [achievements, setAchievements] = useState('');
-  const [addSlotIds, setAddSlotIds] = useState([]);
   const [submittingAdd, setSubmittingAdd] = useState(false);
 
   // Fetch Lookups
   const fetchLookups = useCallback(async () => {
     try {
-      const [deptsRes, slotsRes] = await Promise.all([
-        apiFetch('/departments'),
-        apiFetch('/slots')
-      ]);
-
+      const deptsRes = await apiFetch('/departments');
       if (deptsRes.ok) {
         const json = await deptsRes.json();
         setDepartments(json.data || json);
-      }
-
-      if (slotsRes.ok) {
-        const json = await slotsRes.json();
-        setMasterSlots(json.data || json);
       }
     } catch (err) {
       console.warn('API error loading lookups.', err);
@@ -76,15 +47,6 @@ const AddDoctor = () => {
   useEffect(() => {
     fetchLookups();
   }, [fetchLookups]);
-
-  // Toggle Slot Selection
-  const handleToggleAddSlotId = (id) => {
-    if (addSlotIds.includes(id)) {
-      setAddSlotIds(prev => prev.filter(sid => sid !== id));
-    } else {
-      setAddSlotIds(prev => [...prev, id]);
-    }
-  };
 
   // Submit Add Doctor
   const handleAddDoctor = async (e) => {
@@ -106,8 +68,7 @@ const AddDoctor = () => {
       education: education.trim() || undefined,
       previous_experience: previousExperience.trim() || undefined,
       areas_of_expertise: areasOfExpertise.trim() || undefined,
-      achievements: achievements.trim() || undefined,
-      slot_ids: addSlotIds.length > 0 ? addSlotIds : undefined
+      achievements: achievements.trim() || undefined
     };
 
     try {
@@ -144,9 +105,7 @@ const AddDoctor = () => {
     setPreviousExperience('');
     setAreasOfExpertise('');
     setAchievements('');
-    setAddSlotIds([]);
     setShowAdvancedAdd(false);
-    setShowSlotsAdd(false);
   };
 
   return (
@@ -157,7 +116,7 @@ const AddDoctor = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">Doctor Registration</h1>
-          <p className="text-slate-400 text-xs mt-1">Configure doctors, build advanced bios, and map default work slots.</p>
+          <p className="text-slate-400 text-xs mt-1">Configure doctors and build advanced professional doctor profiles.</p>
         </div>
         <Link
           to="/doctors"
@@ -328,56 +287,6 @@ const AddDoctor = () => {
                         onChange={(e) => setAchievements(e.target.value)}
                       />
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Slots Section */}
-              <div className="border border-slate-100 rounded-2xl overflow-hidden bg-slate-50/20">
-                <button
-                  type="button"
-                  onClick={() => setShowSlotsAdd(!showSlotsAdd)}
-                  className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100/70 transition-colors duration-200"
-                >
-                  <span className="flex items-center gap-2"><FiClock className="text-slate-500" /> Assign Default Slots ({addSlotIds.length} Selected)</span>
-                  {showSlotsAdd ? <FiChevronUp className="text-slate-400" /> : <FiChevronDown className="text-slate-400" />}
-                </button>
-
-                {showSlotsAdd && (
-                  <div className="p-4 border-t border-slate-100 bg-white animate-fade-in space-y-3">
-                    <p className="text-[10px] text-slate-400 font-medium">Select master intervals this doctor will regularly work:</p>
-                    
-                    {masterSlots.length === 0 ? (
-                      <p className="text-[10px] text-slate-450 italic">No master slots configured yet.</p>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
-                        {masterSlots.map(slot => {
-                          const isChecked = addSlotIds.includes(slot.id);
-                          return (
-                            <div
-                              key={slot.id}
-                              onClick={() => handleToggleAddSlotId(slot.id)}
-                              className={`flex items-center gap-2.5 p-2.5 border rounded-xl cursor-pointer select-none transition-all duration-200 ${
-                                isChecked
-                                  ? 'border-[#960c0c]/40 bg-[#960c0c]/3 shadow-3xs'
-                                  : 'bg-white border-slate-200 hover:bg-slate-50/50 hover:border-slate-300'
-                              }`}
-                            >
-                              <div className={`h-4.5 w-4.5 rounded-md border flex items-center justify-center transition-colors shrink-0 ${
-                                isChecked 
-                                  ? 'bg-[#960c0c] border-[#960c0c] text-white' 
-                                  : 'border-slate-300 bg-white'
-                              }`}>
-                                {isChecked && <FiCheck className="text-[10px] stroke-[3]" />}
-                              </div>
-                              <span className={`text-[10.5px] font-bold ${isChecked ? 'text-slate-800' : 'text-slate-650'}`}>
-                                {formatSlotRange(slot.start_time, slot.end_time)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

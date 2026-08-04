@@ -84,6 +84,7 @@ function App() {
           </ProtectedRoute>
         } />
         <Route path="availability" element={<DoctorAvailability />} />
+        <Route path="availability/:doctorId" element={<DoctorAvailability />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

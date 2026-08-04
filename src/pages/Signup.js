@@ -305,13 +305,6 @@ const Signup = () => {
               ))}
             </div>
           )}
-
-          <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-1">
-            <p className="font-bold">💡 How Receptionists Log In:</p>
-            <p className="text-[11px] text-amber-800">
-              Staff members go to <span className="font-black">/login</span>, select the <span className="font-black">Reception Desk</span> tab, and enter the email and password generated above.
-            </p>
-          </div>
         </div>
 
       </div>
