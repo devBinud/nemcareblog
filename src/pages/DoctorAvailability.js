@@ -846,7 +846,7 @@ const DoctorAvailability = () => {
                           : 'text-slate-500 hover:text-slate-800'
                           }`}
                       >
-                        Monthly Calendar
+                        Manage Calendar
                       </button>
                     </div>
                   </div>
@@ -879,14 +879,6 @@ const DoctorAvailability = () => {
                                 <span className="text-3xl font-black text-emerald-950 leading-none">{workingDays.length}</span>
                                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">Days Open</span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setShowScheduleModal(true)}
-                                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition duration-200 flex items-center gap-1.5 cursor-pointer shadow-xs"
-                              >
-                                <FiEdit2 className="text-xs" />
-                                <span>Edit Schedule</span>
-                              </button>
                             </div>
                           </div>
                         );
