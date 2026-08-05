@@ -75,11 +75,11 @@ const expandTo15MinSlots = (slotList) => {
         const endH = String(Math.floor(next / 60)).padStart(2, '0');
         const endM = String(next % 60).padStart(2, '0');
 
-        const slabStart = `${startH}:${startM}:00`;
-        const slabEnd = `${endH}:${endM}:00`;
+        const slabStart = `${startH}:${startM}`;
+        const slabEnd = `${endH}:${endM}`;
 
         const isManuallyDisabled = slot.disabled_slabs
-          ? slot.disabled_slabs.includes(slabStart)
+          ? (slot.disabled_slabs.includes(slabStart) || slot.disabled_slabs.includes(`${slabStart}:00`))
           : slot.is_manually_disabled;
 
         expanded.push({

@@ -73,11 +73,11 @@ const expandTo15MinSlots = (slotList) => {
         const endH = String(Math.floor(next / 60)).padStart(2, '0');
         const endM = String(next % 60).padStart(2, '0');
 
-        const slabStart = `${startH}:${startM}:00`;
-        const slabEnd = `${endH}:${endM}:00`;
+        const slabStart = `${startH}:${startM}`;
+        const slabEnd = `${endH}:${endM}`;
 
         const isManuallyDisabled = slot.disabled_slabs
-          ? slot.disabled_slabs.includes(slabStart)
+          ? (slot.disabled_slabs.includes(slabStart) || slot.disabled_slabs.includes(`${slabStart}:00`))
           : slot.is_manually_disabled;
 
         expanded.push({
@@ -137,8 +137,6 @@ const DoctorAvailability = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [expandedSlotIds, setExpandedSlotIds] = useState({});
   const [selectedMultiDates, setSelectedMultiDates] = useState([]); // Multi-selected dates for batch operations
-  const [explicitWorkingDates, setExplicitWorkingDates] = useState([]); // Extra dates marked working via Month Calendar
-  const [explicitOffDutyDates, setExplicitOffDutyDates] = useState([]); // Extra dates marked off-duty via Month Calendar
 
   // Set active week/schedule range & automatically mark rest dates off-duty
   const handleApplyWorkingWeek = async (docId, startStr, endStr) => {
@@ -168,16 +166,6 @@ const DoctorAvailability = () => {
       success(`Active Working Schedule set (${formatDDMMYYYY(startStr)} - ${formatDDMMYYYY(endStr)})!`);
       setSidebarStart(startStr);
       setSidebarEnd(endStr);
-
-      const rangeDates = [];
-      let cur = new Date(startStr);
-      const endDateObj = new Date(endStr);
-      while (cur <= endDateObj) {
-        rangeDates.push(formatDateString(cur));
-        cur.setDate(cur.getDate() + 1);
-      }
-      setExplicitWorkingDates(prev => Array.from(new Set([...prev, ...rangeDates])));
-      setExplicitOffDutyDates(prev => prev.filter(d => !rangeDates.includes(d)));
 
       const todayStr = getTodayDateString();
       const focusDate = (startStr <= todayStr && endStr >= todayStr) ? todayStr : (startStr < todayStr ? todayStr : startStr);
@@ -471,9 +459,7 @@ const DoctorAvailability = () => {
           const json = await res.json();
           const responseData = json.data || json;
           const isPublished = responseData.published !== false;
-          const isExplicitWorking = explicitWorkingDates.includes(selectedDate);
-          const isExplicitOff = explicitOffDutyDates.includes(selectedDate);
-          const isDateActive = !isExplicitOff && (isExplicitWorking || isPublished);
+          const isDateActive = isPublished;
 
           let slots = responseData.slots || [];
           if (slots.length === 0 && masterSlotsList.length > 0) {
@@ -513,27 +499,23 @@ const DoctorAvailability = () => {
   const [loadingMonthSlots, setLoadingMonthSlots] = useState(false);
 
   // Fetch slot summaries for all active dates in current month when single doctor is selected
-  const fetchDocMonthSlots = useCallback(async (overrideWorking, overrideOff) => {
+  const fetchDocMonthSlots = useCallback(async () => {
     if (!selectedDocId || filteredCells.length === 0) return;
     setLoadingMonthSlots(true);
     const newMap = {};
-    const currentWorking = overrideWorking || explicitWorkingDates;
-    const currentOff = overrideOff || explicitOffDutyDates;
 
     await Promise.all(filteredCells.map(async (cell) => {
       const dStr = formatDateString(cell.date);
-      const isExplicitWorking = currentWorking.includes(dStr);
-      const isExplicitOff = currentOff.includes(dStr);
 
       try {
         const res = await apiFetch(`/doctors/${selectedDocId}/slots?date=${dStr}`);
         if (res.ok) {
           const json = await res.json();
           const responseData = json.data || json;
-          const isPublished = isExplicitOff ? false : (responseData.published !== false);
+          const isPublished = responseData.published !== false;
           let slots = responseData.slots || [];
 
-          const isDateActive = !isExplicitOff && (isExplicitWorking || isPublished);
+          const isDateActive = isPublished;
           const booked = slots.filter(s => s.is_booked).length;
           const hasExplicitDisabled = slots.some(s => s.is_manually_disabled);
 
@@ -547,12 +529,6 @@ const DoctorAvailability = () => {
       }
     }));
 
-    // Auto-sync explicitWorkingDates with all currently published/available dates from API response
-    const apiAvailable = Object.keys(newMap).filter(d => newMap[d].isAvailable || (newMap[d].published && !newMap[d].isLeave));
-    if (apiAvailable.length > 0) {
-      setExplicitWorkingDates(prev => Array.from(new Set([...prev, ...apiAvailable])));
-    }
-
     setDocMonthSlotsMap(newMap);
     setLoadingMonthSlots(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -565,21 +541,21 @@ const DoctorAvailability = () => {
 
     filteredCells.forEach(cell => {
       const dStr = formatDateString(cell.date);
-      const isExplicitWorking = explicitWorkingDates.includes(dStr);
-      const isExplicitOff = explicitOffDutyDates.includes(dStr);
       const dateInfo = docMonthSlotsMap[dStr];
 
       const formatted = formatDDMMYYYY(dStr);
 
-      if (isExplicitOff || (dateInfo && (dateInfo.isLeave || (!dateInfo.isAvailable && dateInfo.booked === 0)))) {
-        onLeave.push(formatted);
-      } else if (isExplicitWorking || (dateInfo && (dateInfo.isAvailable || dateInfo.booked > 0))) {
-        working.push(formatted);
+      if (dateInfo) {
+        if (dateInfo.isLeave || (!dateInfo.isAvailable && dateInfo.booked === 0)) {
+          onLeave.push(formatted);
+        } else if (dateInfo.isAvailable || dateInfo.booked > 0) {
+          working.push(formatted);
+        }
       }
     });
 
     return { working, onLeave };
-  }, [filteredCells, docMonthSlotsMap, explicitWorkingDates, explicitOffDutyDates, formatDateString, formatDDMMYYYY]);
+  }, [filteredCells, docMonthSlotsMap, formatDateString, formatDDMMYYYY]);
 
   useEffect(() => {
     fetchAllActiveSlots();
@@ -1005,14 +981,9 @@ const DoctorAvailability = () => {
                                     }
                                   }));
 
-                                  const updatedOff = Array.from(new Set([...explicitOffDutyDates, ...selectedMultiDates]));
-                                  const updatedWorking = explicitWorkingDates.filter(d => !selectedMultiDates.includes(d));
-
-                                  setExplicitOffDutyDates(updatedOff);
-                                  setExplicitWorkingDates(updatedWorking);
                                   success(`Marked off-duty for ${selectedMultiDates.length} selected date(s)!`);
                                   setSelectedMultiDates([]);
-                                  fetchDocMonthSlots(updatedWorking, updatedOff);
+                                  fetchDocMonthSlots();
                                   fetchAllActiveSlots();
                                   if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
                                 } catch (err) {
@@ -1063,17 +1034,10 @@ const DoctorAvailability = () => {
                                     }
                                   }));
 
-                                  const currentlyAvailable = Object.keys(docMonthSlotsMap).filter(d => docMonthSlotsMap[d]?.isAvailable || (docMonthSlotsMap[d]?.published && !docMonthSlotsMap[d]?.isLeave));
-                                  const updatedWorking = Array.from(new Set([...currentlyAvailable, ...explicitWorkingDates, ...selectedMultiDates]));
-                                  const updatedOff = explicitOffDutyDates.filter(d => !selectedMultiDates.includes(d));
-
-                                  setExplicitWorkingDates(updatedWorking);
-                                  setExplicitOffDutyDates(updatedOff);
-
                                   success(`Marked available for ${selectedMultiDates.length} selected date(s)!`);
                                   setSelectedMultiDates([]);
                                   fetchDoctors();
-                                  fetchDocMonthSlots(updatedWorking, updatedOff);
+                                  fetchDocMonthSlots();
                                   fetchAllActiveSlots();
                                   if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
                                 } catch (err) {
@@ -1099,15 +1063,13 @@ const DoctorAvailability = () => {
                           const isMultiSelected = selectedMultiDates.includes(dateStr);
 
                           const dateInfo = docMonthSlotsMap[dateStr];
-                          const isExplicitWorking = explicitWorkingDates.includes(dateStr);
-                          const isExplicitOffDuty = explicitOffDutyDates.includes(dateStr);
-                          const isDayAvailable = !isExplicitOffDuty && (isExplicitWorking || (dateInfo?.isAvailable && dateInfo?.total > 0) || (dateInfo?.published && !dateInfo?.isLeave));
+                          const isDayAvailable = dateInfo?.isAvailable && dateInfo?.total > 0;
 
                           let statusBadge = null;
                           if (loadingMonthSlots && !dateInfo) {
                             statusBadge = <span className="text-[8px] font-bold text-slate-400 animate-pulse mt-1">Loading...</span>;
                           } else if (dateInfo) {
-                            if (isExplicitOffDuty || (dateInfo.isLeave && !isExplicitWorking)) {
+                            if (dateInfo.isLeave) {
                               statusBadge = <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 mt-1">Off Duty</span>;
                             } else if (dateInfo.booked > 0) {
                               statusBadge = <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 border border-indigo-200 mt-1">{dateInfo.booked} Booked</span>;
