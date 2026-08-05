@@ -174,6 +174,8 @@ const ManageDoctorSlots = () => {
     );
   };
 
+  const [workingDaysSummary, setWorkingDaysSummary] = useState('');
+
   // Fetch doctor info
   useEffect(() => {
     if (!doctorId) return;
@@ -183,6 +185,43 @@ const ManageDoctorSlots = () => {
         setDoctor(json.data || json);
       })
       .catch(err => console.warn('Failed to load doctor', err));
+
+    const fetchActiveDays = async () => {
+      try {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const monthName = today.toLocaleString('default', { month: 'long' });
+
+        const activeDays = [];
+        await Promise.all(
+          Array.from({ length: daysInMonth }, (_, i) => i + 1).map(async (day) => {
+            const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            try {
+              const res = await apiFetch(`/doctors/${doctorId}/slots?date=${dStr}`);
+              if (res.ok) {
+                const json = await res.json();
+                const data = json.data || json;
+                if (data.published !== false && data.slots && data.slots.some(s => !s.is_manually_disabled)) {
+                  activeDays.push(day);
+                }
+              }
+            } catch (e) {}
+          })
+        );
+
+        activeDays.sort((a, b) => a - b);
+        if (activeDays.length > 0) {
+          setWorkingDaysSummary(`${monthName} – ${activeDays.join(', ')}`);
+        } else {
+          setWorkingDaysSummary('No published working days for this month');
+        }
+      } catch (err) {
+        console.warn('Failed to load active working days summary', err);
+      }
+    };
+    fetchActiveDays();
   }, [doctorId]);
 
   // Fetch slots for selected date
@@ -349,6 +388,14 @@ const ManageDoctorSlots = () => {
                 <p className="text-slate-400 text-xs mt-0.5">
                   {doctor?.designation || 'Consultant'} • Doctor Slot Availability Management
                 </p>
+                {workingDaysSummary && (
+                  <div className="mt-2.5">
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50/90 border border-emerald-200 px-3 py-1 rounded-xl inline-flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>Available Working Schedule: {workingDaysSummary}</span>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
