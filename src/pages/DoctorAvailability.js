@@ -53,6 +53,54 @@ const isSlotTimePassed = (dateStr, slotEndTimeStr) => {
   return slotEnd < now;
 };
 
+const expandTo15MinSlots = (slotList) => {
+  if (!Array.isArray(slotList)) return [];
+  const expanded = [];
+  slotList.forEach(slot => {
+    if (!slot.start_time || !slot.end_time) return;
+    const [h1, m1] = slot.start_time.split(':').map(Number);
+    const [h2, m2] = slot.end_time.split(':').map(Number);
+    const startMins = h1 * 60 + m1;
+    const endMins = h2 * 60 + m2;
+    const duration = endMins - startMins;
+
+    if (duration > 15) {
+      let curr = startMins;
+      while (curr < endMins) {
+        const next = Math.min(curr + 15, endMins);
+        const startH = String(Math.floor(curr / 60)).padStart(2, '0');
+        const startM = String(curr % 60).padStart(2, '0');
+        const endH = String(Math.floor(next / 60)).padStart(2, '0');
+        const endM = String(next % 60).padStart(2, '0');
+
+        const slabStart = `${startH}:${startM}:00`;
+        const slabEnd = `${endH}:${endM}:00`;
+
+        const isManuallyDisabled = slot.disabled_slabs
+          ? slot.disabled_slabs.includes(slabStart)
+          : slot.is_manually_disabled;
+
+        expanded.push({
+          ...slot,
+          id: `${slot.id || slot.master_slot_id}_${startH}${startM}`,
+          master_slot_id: slot.master_slot_id || slot.id,
+          start_time: slabStart,
+          end_time: slabEnd,
+          is_manually_disabled: !!isManuallyDisabled,
+          available: !isManuallyDisabled && !slot.is_booked
+        });
+        curr = next;
+      }
+    } else {
+      expanded.push({
+        ...slot,
+        master_slot_id: slot.master_slot_id || slot.id
+      });
+    }
+  });
+  return expanded;
+};
+
 const DoctorAvailability = () => {
   const { doctorId } = useParams();
   const navigate = useNavigate();
@@ -87,6 +135,7 @@ const DoctorAvailability = () => {
   const [submittingSidebar, setSubmittingSidebar] = useState(false);
   const [absenceMode, setAbsenceMode] = useState('schedule'); // 'schedule' or 'daywise'
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [expandedSlotIds, setExpandedSlotIds] = useState({});
   const [selectedMultiDates, setSelectedMultiDates] = useState([]); // Multi-selected dates for batch operations
   const [explicitWorkingDates, setExplicitWorkingDates] = useState([]); // Extra dates marked working via Month Calendar
   const [explicitOffDutyDates, setExplicitOffDutyDates] = useState([]); // Extra dates marked off-duty via Month Calendar
@@ -326,11 +375,12 @@ const DoctorAvailability = () => {
         setSidebarStart(cleanDateStr(currentDoc.start_date));
         setSidebarEnd(cleanDateStr(currentDoc.end_date));
       } else {
-        // Default to Week 1 of current month
-        const year = currentMonth.getFullYear();
-        const month = currentMonth.getMonth();
-        const sStr = formatDateString(new Date(year, month, 1));
-        const eStr = formatDateString(new Date(year, month, 7));
+        // Default to today and 7 days ahead
+        const today = new Date();
+        const sStr = formatDateString(today);
+        const nextWeek = new Date(today);
+        nextWeek.setDate(today.getDate() + 7);
+        const eStr = formatDateString(nextWeek);
         setSidebarStart(sStr);
         setSidebarEnd(eStr);
       }
@@ -340,15 +390,19 @@ const DoctorAvailability = () => {
   // Only sync selectedDate when sidebarStart or sidebarEnd actually change
   const prevRangeRef = useRef({ start: '', end: '' });
   useEffect(() => {
+    const todayStr = getTodayDateString();
     if (sidebarStart && sidebarEnd) {
       const cleanStart = cleanDateStr(sidebarStart);
       const cleanEnd = cleanDateStr(sidebarEnd);
       if (cleanStart && cleanEnd) {
         if (prevRangeRef.current.start !== cleanStart || prevRangeRef.current.end !== cleanEnd) {
           prevRangeRef.current = { start: cleanStart, end: cleanEnd };
-          setSelectedDate(cleanStart);
+          // Default to today if cleanStart is in the past
+          setSelectedDate(cleanStart < todayStr ? todayStr : cleanStart);
         }
       }
+    } else {
+      setSelectedDate(todayStr);
     }
   }, [sidebarStart, sidebarEnd, cleanDateStr]);
 
@@ -441,53 +495,67 @@ const DoctorAvailability = () => {
           }
           newSlotsMap[doc.id] = slots;
         } else {
-          error(`Failed to fetch slots for Dr. ${doc.name.replace(/^Dr\.\s+/i, '')}`);
+          console.warn(`Failed to fetch slots for Dr. ${doc.name.replace(/^Dr\.\s+/i, '')}`);
         }
       } catch (err) {
-        console.error(err);
-        error(`Network error loading slots for Dr. ${doc.name.replace(/^Dr\.\s+/i, '')}`);
+        console.warn(`Network error loading slots for Dr. ${doc.name.replace(/^Dr\.\s+/i, '')}`, err);
       } finally {
         setLoadingSlotsMap(prev => ({ ...prev, [doc.id]: false }));
       }
     }));
 
     setSlotsByDoc(newSlotsMap);
-  }, [selectedDate, selectedDocId, doctors, filteredDoctors, explicitWorkingDates, explicitOffDutyDates, error]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, selectedDocId, doctors, filteredDoctors]);
 
   // Single doctor month slots map for rendering live status badges on calendar date cards
   const [docMonthSlotsMap, setDocMonthSlotsMap] = useState({});
   const [loadingMonthSlots, setLoadingMonthSlots] = useState(false);
 
   // Fetch slot summaries for all active dates in current month when single doctor is selected
-  const fetchDocMonthSlots = useCallback(async () => {
+  const fetchDocMonthSlots = useCallback(async (overrideWorking, overrideOff) => {
     if (!selectedDocId || filteredCells.length === 0) return;
     setLoadingMonthSlots(true);
     const newMap = {};
+    const currentWorking = overrideWorking || explicitWorkingDates;
+    const currentOff = overrideOff || explicitOffDutyDates;
 
     await Promise.all(filteredCells.map(async (cell) => {
       const dStr = formatDateString(cell.date);
+      const isExplicitWorking = currentWorking.includes(dStr);
+      const isExplicitOff = currentOff.includes(dStr);
+
       try {
         const res = await apiFetch(`/doctors/${selectedDocId}/slots?date=${dStr}`);
         if (res.ok) {
           const json = await res.json();
           const responseData = json.data || json;
-          const isPublished = responseData.published !== false;
+          const isPublished = isExplicitOff ? false : (responseData.published !== false);
           let slots = responseData.slots || [];
 
+          const isDateActive = !isExplicitOff && (isExplicitWorking || isPublished);
           const booked = slots.filter(s => s.is_booked).length;
           const hasExplicitDisabled = slots.some(s => s.is_manually_disabled);
-          const isLeave = !isPublished || (hasExplicitDisabled && slots.length > 0 && slots.every(s => s.is_booked || s.is_manually_disabled));
-          const isAvailable = isPublished && slots.length > 0 && slots.some(s => !s.is_booked && !s.is_manually_disabled);
 
-          newMap[dStr] = { published: isPublished, booked, isLeave, isAvailable, total: slots.length };
+          const isLeave = !isDateActive || (hasExplicitDisabled && slots.length > 0 && slots.every(s => s.is_booked || s.is_manually_disabled));
+          const isAvailable = isDateActive && (slots.length === 0 || slots.some(s => !s.is_booked && !s.is_manually_disabled));
+
+          newMap[dStr] = { published: isPublished, booked, isLeave, isAvailable, total: slots.length || 1 };
         }
       } catch (err) {
         console.error(err);
       }
     }));
 
+    // Auto-sync explicitWorkingDates with all currently published/available dates from API response
+    const apiAvailable = Object.keys(newMap).filter(d => newMap[d].isAvailable || (newMap[d].published && !newMap[d].isLeave));
+    if (apiAvailable.length > 0) {
+      setExplicitWorkingDates(prev => Array.from(new Set([...prev, ...apiAvailable])));
+    }
+
     setDocMonthSlotsMap(newMap);
     setLoadingMonthSlots(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocId, filteredCells, formatDateString]);
 
   // Direct Active Working & Leave Dates Breakdown for Current Month
@@ -525,17 +593,14 @@ const DoctorAvailability = () => {
   const fetchSingleDoctorSlots = useCallback(async (docId, dateVal) => {
     const targetDate = dateVal || selectedDate;
     if (!docId || !targetDate) return;
+
     try {
       const res = await apiFetch(`/doctors/${docId}/slots?date=${targetDate}`);
       if (res.ok) {
         const json = await res.json();
         const responseData = json.data || json;
-        const isPublished = responseData.published !== false;
-        const isExplicitWorking = explicitWorkingDates.includes(targetDate);
-        const isExplicitOff = explicitOffDutyDates.includes(targetDate);
-        const isDateActive = !isExplicitOff && (isExplicitWorking || isPublished);
-
         let slots = responseData.slots || [];
+
         if (slots.length === 0) {
           const mRes = await apiFetch('/slots');
           if (mRes.ok) {
@@ -547,30 +612,23 @@ const DoctorAvailability = () => {
               start_time: ms.start_time,
               end_time: ms.end_time,
               is_booked: false,
-              is_manually_disabled: !isDateActive,
-              available: isDateActive
+              is_manually_disabled: responseData.published === false,
+              available: responseData.published !== false
             }));
           }
-        } else if (!isDateActive) {
-          slots = slots.map(s => ({
-            ...s,
-            is_manually_disabled: true,
-            available: false
-          }));
         }
 
         setSlotsByDoc(prev => ({
           ...prev,
-          [docId]: slots
+          [docId]: expandTo15MinSlots(slots)
         }));
       } else {
-        error('Failed to fetch slots');
+        console.warn(`Failed to fetch slots for doctor ${docId} on ${targetDate}`);
       }
     } catch (err) {
-      console.error(err);
-      error('Network error. Failed to refresh doctor slots.');
+      console.warn(`Network error loading doctor slots for ${docId}`, err);
     }
-  }, [selectedDate, explicitWorkingDates, explicitOffDutyDates, error]);
+  }, [selectedDate]);
 
   useEffect(() => {
     if (selectedDocId && selectedDate) {
@@ -673,19 +731,17 @@ const DoctorAvailability = () => {
                           const focusDate = (sStr <= todayStr && eStr >= todayStr) ? todayStr : (sStr < todayStr ? todayStr : sStr);
                           setSelectedDate(focusDate);
                         }}
-                        className={`px-3 py-2 text-xs font-extrabold rounded-xl border transition cursor-pointer flex items-center gap-2 ${
-                          isActivePreset
-                            ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
+                        className={`px-3 py-2 text-xs font-extrabold rounded-xl border transition cursor-pointer flex items-center gap-2 ${isActivePreset
+                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
                       >
                         <span>{label}</span>
                         {activeDaysCount > 0 ? (
-                          <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${
-                            isActivePreset
-                              ? 'bg-emerald-800/90 text-white border-emerald-600/60'
-                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          }`}>
+                          <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${isActivePreset
+                            ? 'bg-emerald-800/90 text-white border-emerald-600/60'
+                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}>
                             {activeDaysCount} Open
                           </span>
                         ) : (
@@ -843,9 +899,10 @@ const DoctorAvailability = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-white px-3 py-1.5 rounded-xl border border-emerald-200">
-                                {workingDays.length} Days Open
-                              </span>
+                              <div className="flex items-baseline gap-1.5 px-1">
+                                <span className="text-3xl font-black text-emerald-950 leading-none">{workingDays.length}</span>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">Days Open</span>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => setShowScheduleModal(true)}
@@ -871,7 +928,7 @@ const DoctorAvailability = () => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border border-slate-200/70 rounded-2xl">
                         <div>
                           <p className="text-xs font-black text-slate-800">
-                            Monthly Availability Overvie
+                            Monthly Availability Overview
                           </p>
 
                         </div>
@@ -917,17 +974,45 @@ const DoctorAvailability = () => {
                               onClick={async () => {
                                 setSubmittingSidebar(true);
                                 try {
-                                  await Promise.all(selectedMultiDates.map(dStr =>
-                                    apiFetch(`/doctors/${selectedDocId}/unavailable`, {
+                                  await Promise.all(selectedMultiDates.map(async (dStr) => {
+                                    await apiFetch(`/doctors/${selectedDocId}/unavailable`, {
                                       method: 'POST',
                                       body: JSON.stringify({ date: dStr })
-                                    })
-                                  ));
-                                  setExplicitOffDutyDates(prev => Array.from(new Set([...prev, ...selectedMultiDates])));
-                                  setExplicitWorkingDates(prev => prev.filter(d => !selectedMultiDates.includes(d)));
+                                    });
+                                    try {
+                                      const sRes = await apiFetch(`/doctors/${selectedDocId}/slots?date=${dStr}`);
+                                      if (sRes.ok) {
+                                        const sJson = await sRes.json();
+                                        const sData = sJson.data || sJson;
+                                        const sList = sData.slots || [];
+                                        const activeList = sList.filter(s => !s.is_manually_disabled && !s.is_booked);
+                                        if (activeList.length > 0) {
+                                          await Promise.all(activeList.map(s =>
+                                            apiFetch(`/doctors/${selectedDocId}/slots/toggle`, {
+                                              method: 'POST',
+                                              body: JSON.stringify({
+                                                slot_id: s.master_slot_id || s.id,
+                                                slab_start_time: s.start_time,
+                                                date: dStr,
+                                                is_disabled: true
+                                              })
+                                            })
+                                          ));
+                                        }
+                                      }
+                                    } catch (e) {
+                                      console.warn('Slot toggle error during batch off-duty', e);
+                                    }
+                                  }));
+
+                                  const updatedOff = Array.from(new Set([...explicitOffDutyDates, ...selectedMultiDates]));
+                                  const updatedWorking = explicitWorkingDates.filter(d => !selectedMultiDates.includes(d));
+
+                                  setExplicitOffDutyDates(updatedOff);
+                                  setExplicitWorkingDates(updatedWorking);
                                   success(`Marked off-duty for ${selectedMultiDates.length} selected date(s)!`);
                                   setSelectedMultiDates([]);
-                                  fetchDocMonthSlots();
+                                  fetchDocMonthSlots(updatedWorking, updatedOff);
                                   fetchAllActiveSlots();
                                   if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
                                 } catch (err) {
@@ -947,19 +1032,48 @@ const DoctorAvailability = () => {
                               onClick={async () => {
                                 setSubmittingSidebar(true);
                                 try {
-                                  await Promise.all(selectedMultiDates.map(dStr =>
-                                    apiFetch(`/doctors/${selectedDocId}/available`, {
+                                  await Promise.all(selectedMultiDates.map(async (dStr) => {
+                                    await apiFetch(`/doctors/${selectedDocId}/available`, {
                                       method: 'POST',
                                       body: JSON.stringify({ date: dStr })
-                                    })
-                                  ));
-                                  setExplicitWorkingDates(prev => Array.from(new Set([...prev, ...selectedMultiDates])));
-                                  setExplicitOffDutyDates(prev => prev.filter(d => !selectedMultiDates.includes(d)));
+                                    });
+                                    try {
+                                      const sRes = await apiFetch(`/doctors/${selectedDocId}/slots?date=${dStr}`);
+                                      if (sRes.ok) {
+                                        const sJson = await sRes.json();
+                                        const sData = sJson.data || sJson;
+                                        const sList = sData.slots || [];
+                                        const disabledList = sList.filter(s => s.is_manually_disabled);
+                                        if (disabledList.length > 0) {
+                                          await Promise.all(disabledList.map(s =>
+                                            apiFetch(`/doctors/${selectedDocId}/slots/toggle`, {
+                                              method: 'POST',
+                                              body: JSON.stringify({
+                                                slot_id: s.master_slot_id || s.id,
+                                                slab_start_time: s.start_time,
+                                                date: dStr,
+                                                is_disabled: false
+                                              })
+                                            })
+                                          ));
+                                        }
+                                      }
+                                    } catch (e) {
+                                      console.warn('Slot toggle error during batch working', e);
+                                    }
+                                  }));
+
+                                  const currentlyAvailable = Object.keys(docMonthSlotsMap).filter(d => docMonthSlotsMap[d]?.isAvailable || (docMonthSlotsMap[d]?.published && !docMonthSlotsMap[d]?.isLeave));
+                                  const updatedWorking = Array.from(new Set([...currentlyAvailable, ...explicitWorkingDates, ...selectedMultiDates]));
+                                  const updatedOff = explicitOffDutyDates.filter(d => !selectedMultiDates.includes(d));
+
+                                  setExplicitWorkingDates(updatedWorking);
+                                  setExplicitOffDutyDates(updatedOff);
 
                                   success(`Marked available for ${selectedMultiDates.length} selected date(s)!`);
                                   setSelectedMultiDates([]);
                                   fetchDoctors();
-                                  fetchDocMonthSlots();
+                                  fetchDocMonthSlots(updatedWorking, updatedOff);
                                   fetchAllActiveSlots();
                                   if (selectedDocId) fetchSingleDoctorSlots(selectedDocId, selectedDate);
                                 } catch (err) {
@@ -987,7 +1101,7 @@ const DoctorAvailability = () => {
                           const dateInfo = docMonthSlotsMap[dateStr];
                           const isExplicitWorking = explicitWorkingDates.includes(dateStr);
                           const isExplicitOffDuty = explicitOffDutyDates.includes(dateStr);
-                          const isDayAvailable = !isExplicitOffDuty && (isExplicitWorking || (dateInfo?.isAvailable && dateInfo?.total > 0));
+                          const isDayAvailable = !isExplicitOffDuty && (isExplicitWorking || (dateInfo?.isAvailable && dateInfo?.total > 0) || (dateInfo?.published && !dateInfo?.isLeave));
 
                           let statusBadge = null;
                           if (loadingMonthSlots && !dateInfo) {
@@ -1054,16 +1168,25 @@ const DoctorAvailability = () => {
                       </p>
                     </div>
 
-                    {/* Date Selector & Quick Summary Metrics Bar */}
+                    {/* Date Selector & Action Buttons Bar */}
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-extrabold">
+                        <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-extrabold">
                           {availableCount} Available
                         </span>
-                        <span className="px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-extrabold">
+                        <span className="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-extrabold">
                           {bookedCount} Booked
                         </span>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/availability/${selectedDocId}/slots`)}
+                        className="px-4 py-2 bg-[#960c0c] hover:bg-[#b00f0f] text-white text-xs font-extrabold rounded-2xl transition duration-200 flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <FiEdit2 className="text-xs" />
+                        <span>Edit / Manage Slots</span>
+                      </button>
 
                       <div className="bg-white hover:bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200/90 shadow-2xs hover:border-[#960c0c]/40 transition duration-200 cursor-pointer flex items-center justify-center">
                         <DatePickerDDMMYYYY
@@ -1084,52 +1207,148 @@ const DoctorAvailability = () => {
                         Dr. {currentDoc?.name ? currentDoc.name.replace(/^Dr\.\s+/i, '') : ''} has no active master slots assigned for this date. You can assign slot schedules under <span className="font-bold text-slate-600">All Doctors</span>.
                       </p>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {docSlots.map((slot) => {
-                        const hasPassed = isSlotTimePassed(selectedDate, slot.end_time);
-                        let statusLabel = 'Available';
-                        let statusStyle = 'bg-emerald-50/70 border-emerald-200 text-emerald-900 shadow-3xs cursor-default';
-                        let badgeStyle = 'bg-emerald-600 text-white font-extrabold shadow-2xs';
-                        let iconColor = 'text-emerald-600';
+                  ) : (() => {
+                    // Group 15-minute slabs into hourly master slots for expandable accordion view
+                    const groupsMap = {};
+                    docSlots.forEach((slot) => {
+                      const mid = slot.master_slot_id || 'default';
+                      if (!groupsMap[mid]) {
+                        groupsMap[mid] = { master_slot_id: mid, slabs: [] };
+                      }
+                      groupsMap[mid].slabs.push(slot);
+                    });
 
-                        if (slot.is_booked) {
-                          statusLabel = 'Booked';
-                          statusStyle = 'bg-indigo-50/70 border-indigo-200 text-indigo-900 shadow-3xs cursor-default';
-                          badgeStyle = 'bg-indigo-600 text-white font-extrabold shadow-2xs';
-                          iconColor = 'text-indigo-600';
-                        } else if (hasPassed) {
-                          statusLabel = 'Passed';
-                          statusStyle = 'bg-slate-100/40 border-dashed border-slate-200 text-slate-400 opacity-55 cursor-default';
-                          badgeStyle = 'bg-slate-200/70 text-slate-500 font-extrabold';
-                          iconColor = 'text-slate-300';
-                        } else if (slot.is_manually_disabled) {
-                          statusLabel = 'Disabled';
-                          statusStyle = 'bg-slate-100/70 border-slate-200 text-slate-600 shadow-3xs cursor-default';
-                          badgeStyle = 'bg-slate-400 text-white font-extrabold shadow-2xs';
-                          iconColor = 'text-slate-400';
-                        }
+                    const masterGroups = Object.values(groupsMap).map((group) => {
+                      group.slabs.sort((a, b) => a.start_time.localeCompare(b.start_time));
+                      const firstSlab = group.slabs[0];
+                      const lastSlab = group.slabs[group.slabs.length - 1];
 
-                        return (
-                          <div
-                            key={slot.id}
-                            className={`p-3.5 rounded-xl border flex items-center justify-between select-none ${statusStyle}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <FiClock className={`text-xs ${iconColor}`} />
-                              <span className="text-xs font-bold tracking-tight">
-                                {formatSlotRange(slot.start_time, slot.end_time)}
-                              </span>
-                            </div>
+                      const activeSlabsCount = group.slabs.filter(s => !s.is_booked && !s.is_manually_disabled && !isSlotTimePassed(selectedDate, s.end_time)).length;
+                      const bookedCount = group.slabs.filter(s => s.is_booked).length;
+                      const allPassed = group.slabs.every(s => isSlotTimePassed(selectedDate, s.end_time));
+                      const allInactive = group.slabs.every(s => s.is_manually_disabled || isSlotTimePassed(selectedDate, s.end_time));
 
-                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider ${badgeStyle}`}>
-                              {statusLabel}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                      return {
+                        ...group,
+                        master_start_time: firstSlab ? firstSlab.start_time : '',
+                        master_end_time: lastSlab ? lastSlab.end_time : '',
+                        activeSlabsCount,
+                        bookedCount,
+                        allPassed,
+                        allInactive
+                      };
+                    }).sort((a, b) => a.master_start_time.localeCompare(b.master_start_time));
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 items-start">
+                          {masterGroups.map((group) => {
+                            const masterId = group.master_slot_id;
+                            const isExpanded = !!expandedSlotIds[masterId];
+
+                            let masterStatusLabel = 'Inactive';
+                            let masterBadgeStyle = 'bg-slate-400 text-white font-extrabold shadow-2xs';
+                            let masterCardStyle = 'bg-slate-50/80 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50';
+                            let iconColor = 'text-slate-400';
+
+                            if (group.allPassed) {
+                              masterStatusLabel = 'Passed';
+                              masterCardStyle = 'bg-slate-100/40 border-dashed border-slate-200 text-slate-400 opacity-60';
+                              masterBadgeStyle = 'bg-slate-200 text-slate-500 font-extrabold';
+                              iconColor = 'text-slate-300';
+                            } else if (group.activeSlabsCount > 0) {
+                              masterStatusLabel = `${group.activeSlabsCount} Active`;
+                              masterCardStyle = 'bg-emerald-50/70 border-emerald-200/90 text-emerald-950 hover:border-emerald-400 hover:shadow-xs';
+                              masterBadgeStyle = 'bg-emerald-700 text-white font-extrabold shadow-2xs';
+                              iconColor = 'text-emerald-700';
+                            } else if (group.bookedCount > 0) {
+                              masterStatusLabel = `${group.bookedCount} Booked`;
+                              masterCardStyle = 'bg-indigo-50/70 border-indigo-200/90 text-indigo-950 hover:border-indigo-400 hover:shadow-xs';
+                              masterBadgeStyle = 'bg-indigo-600 text-white font-extrabold shadow-2xs';
+                              iconColor = 'text-indigo-600';
+                            }
+
+                            return (
+                              <div
+                                key={masterId}
+                                className={`rounded-2xl border transition-all duration-200 overflow-hidden shadow-3xs ${masterCardStyle}`}
+                              >
+                                {/* Hourly Master Header Bar with Chevron */}
+                                <div
+                                  onClick={() => setExpandedSlotIds(prev => ({ ...prev, [masterId]: !prev[masterId] }))}
+                                  className="p-3.5 flex items-center justify-between cursor-pointer select-none group gap-2"
+                                >
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <FiClock className={`text-xs shrink-0 ${iconColor}`} />
+                                    <span className="text-xs font-black tracking-tight whitespace-nowrap text-slate-800">
+                                      {formatSlotRange(group.master_start_time, group.master_end_time)}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] uppercase tracking-wider whitespace-nowrap ${masterBadgeStyle}`}>
+                                      {masterStatusLabel}
+                                    </span>
+
+                                    {/* Chevron Dropdown Arrow Indicator */}
+                                    <div className="p-1 rounded-lg text-slate-400 group-hover:text-slate-700 transition shrink-0">
+                                      <FiChevronDown className={`text-sm transition-transform duration-300 ${isExpanded ? 'transform rotate-180 text-slate-800' : ''}`} />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Expanded Accordion Content: 15-Minute Slabs */}
+                                {isExpanded && (
+                                  <div className="px-3 pb-3 pt-1 border-t border-slate-200/60 bg-white/80 space-y-2 animate-fade-in">
+                                    <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-1">
+                                      15-Minute Slots ({group.slabs.length})
+                                    </p>
+                                    <div className="grid grid-cols-1 gap-1.5">
+                                      {group.slabs.map((slot) => {
+                                        const hasPassed = isSlotTimePassed(selectedDate, slot.end_time);
+                                        let slabLabel = 'Active';
+                                        let slabBadge = 'bg-emerald-600 text-white hover:bg-emerald-700';
+                                        let slabBg = 'bg-emerald-50/70 border-emerald-200 text-emerald-900';
+
+                                        if (slot.is_booked) {
+                                          slabLabel = 'Booked 🔒';
+                                          slabBadge = 'bg-indigo-600 text-white';
+                                          slabBg = 'bg-indigo-50/70 border-indigo-200 text-indigo-900';
+                                        } else if (hasPassed) {
+                                          slabLabel = 'Passed';
+                                          slabBadge = 'bg-slate-200 text-slate-500';
+                                          slabBg = 'bg-slate-100/40 border-slate-200 text-slate-400 opacity-60';
+                                        } else if (slot.is_manually_disabled) {
+                                          slabLabel = 'Inactive';
+                                          slabBadge = 'bg-slate-500 text-white hover:bg-slate-600';
+                                          slabBg = 'bg-slate-100/80 border-slate-200 text-slate-600';
+                                        }
+
+                                        return (
+                                          <div
+                                            key={slot.id}
+                                            className={`p-2 rounded-xl border flex items-center justify-between text-xs select-none transition ${slabBg}`}
+                                          >
+                                            <span className="text-[11px] font-bold">
+                                              {formatSlotRange(slot.start_time, slot.end_time)}
+                                            </span>
+
+                                            <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${slabBadge}`}>
+                                              {slabLabel}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );

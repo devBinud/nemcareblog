@@ -112,21 +112,6 @@ const getWeekDays = (mondayDate) => {
   return days;
 };
 
-const formatWeekRange = (mondayDate) => {
-  if (!mondayDate) return '';
-  const satDate = new Date(mondayDate);
-  satDate.setDate(mondayDate.getDate() + 5);
-
-  const monDay = mondayDate.getDate();
-  const monMonth = mondayDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-
-  const satDay = satDate.getDate();
-  const satMonth = satDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-  const satYear = satDate.getFullYear();
-
-  return `${monDay} ${monMonth} – ${satDay} ${satMonth} ${satYear}`;
-};
-
 const Appointments = () => {
   const { toasts, removeToast, success } = useToast();
 
@@ -361,23 +346,16 @@ const Appointments = () => {
     }
   }, [weekSlotsData, loadingWeekSlots, currentWeekStart, bookingDate, getDayStatus]);
 
-  // Navigation handlers for week
-  const handlePrevWeek = () => {
-    const prevMon = new Date(currentWeekStart);
-    prevMon.setDate(prevMon.getDate() - 7);
-    const todayMon = getMondayOfDate(new Date());
-    if (prevMon < todayMon) return;
-    setCurrentWeekStart(prevMon);
-  };
-
   const handleNextWeek = () => {
     const nextMon = new Date(currentWeekStart);
     nextMon.setDate(nextMon.getDate() + 7);
     setCurrentWeekStart(nextMon);
   };
 
-  const todayMon = getMondayOfDate(new Date());
-  const isPrevWeekDisabled = currentWeekStart <= todayMon;
+  const selectedBookingDoctor = useMemo(() => {
+    if (!bookingDocId) return null;
+    return doctors.find(d => d.id === Number(bookingDocId)) || null;
+  }, [bookingDocId, doctors]);
 
   // Group slots by master slot ID for hourly expandable view
   const groupedSlots = useMemo(() => {
@@ -1427,6 +1405,54 @@ const Appointments = () => {
                     </div>
                   </div>
 
+                  {/* Doctor Details Preview divided by full-width dashed line */}
+                  {selectedBookingDoctor && (
+                    <div className="border-t border-dashed border-slate-200 pt-4 mt-4 animate-fade-in space-y-3">
+                      <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                        Selected Doctor Information
+                      </p>
+
+                      <div className="p-4 bg-slate-50/80 border border-slate-200/90 rounded-2xl flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-[#960c0c]/10 text-[#960c0c] flex items-center justify-center font-black text-lg shrink-0 border border-[#960c0c]/20">
+                          {selectedBookingDoctor.name ? selectedBookingDoctor.name.replace(/^Dr\.\s+/i, '').charAt(0) : 'D'}
+                        </div>
+
+                        <div className="space-y-1 grow">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-sm font-black text-slate-800">
+                              Dr. {selectedBookingDoctor.name.replace(/^Dr\.\s+/i, '')}
+                            </h4>
+                          </div>
+
+                          <p className="text-xs font-semibold text-slate-600">
+                            {selectedBookingDoctor.designation || 'Consultant Specialist'}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 border-t border-slate-200/60 text-[11px] text-slate-500 font-medium mt-2">
+                            <span>
+                              <strong>Department:</strong> {departments.find(d => d.id === selectedBookingDoctor.department_id)?.name || 'General'}
+                            </span>
+                            {selectedBookingDoctor.qualification && (
+                              <span>
+                                <strong>Qualification:</strong> {selectedBookingDoctor.qualification}
+                              </span>
+                            )}
+                            {selectedBookingDoctor.experience && (
+                              <span>
+                                <strong>Experience:</strong> {selectedBookingDoctor.experience}
+                              </span>
+                            )}
+                            {selectedBookingDoctor.consultation_fee && (
+                              <span className="text-[#960c0c] font-extrabold">
+                                <strong>Fee:</strong> ₹{selectedBookingDoctor.consultation_fee}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Step 1 Actions */}
                   <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                     <button
@@ -1559,110 +1585,76 @@ const Appointments = () => {
                       </div>
                     </div>
 
-                    {/* Weekly Schedule View (Option 2 - Horizontal Cards) */}
+                    {/* Available Schedule Dates View */}
                     <div className="space-y-3.5 pt-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Preferred Week *
+                        Select Available Appointment Date *
                       </label>
 
-                      {/* Week Navigation Header Bar */}
-                      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl p-2.5 shadow-3xs">
-                        <button
-                          type="button"
-                          onClick={handlePrevWeek}
-                          disabled={isPrevWeekDisabled}
-                          className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
-                          title="Previous Week"
-                        >
-                          <FiChevronLeft className="text-sm" />
-                        </button>
-
-                        <div className="flex items-center gap-2 font-extrabold text-slate-800 text-xs tracking-tight">
-                          <FiCalendar className="text-slate-500 text-sm" />
-                          <span>{formatWeekRange(currentWeekStart)}</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleNextWeek}
-                          className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition cursor-pointer"
-                          title="Next Week"
-                        >
-                          <FiChevronRight className="text-sm" />
-                        </button>
-                      </div>
-
-                      {/* 6-Day Horizontal Cards Row */}
+                      {/* Filtered Days Cards Row (Only Available Dates) */}
                       {loadingWeekSlots ? (
                         <div className="py-8 text-center text-xs text-slate-400 animate-pulse bg-slate-50/70 rounded-2xl border border-dashed border-slate-200">
-                          Checking doctor schedule...
+                          Checking available doctor dates...
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-2.5">
-                          {getWeekDays(currentWeekStart).map((day) => {
-                            const status = getDayStatus(day.dateStr);
-                            const isSelected = bookingDate === day.dateStr;
-                            const isAvailable = status === 'Available';
+                      ) : (() => {
+                        const availableDays = getWeekDays(currentWeekStart).filter(d => getDayStatus(d.dateStr) === 'Available');
 
-                            return (
+                        if (availableDays.length === 0) {
+                          return (
+                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center space-y-2 animate-fade-in">
+                              <p className="text-xs font-bold text-amber-900">No Available Appointment Dates This Week</p>
+                              <p className="text-[11px] text-amber-700 font-medium max-w-md mx-auto">
+                                All slots for Dr. {selectedBookingDoctor?.name ? selectedBookingDoctor.name.replace(/^Dr\.\s+/i, '') : ''} are currently booked or off-duty for this week.
+                              </p>
                               <button
-                                key={day.dateStr}
                                 type="button"
-                                disabled={!isAvailable}
-                                onClick={() => {
-                                  if (!isAvailable) return;
-                                  setBookingDate(day.dateStr);
-                                  setBookingSlotId('');
-                                  setSelectedMasterId(null);
-                                }}
-                                style={isSelected ? { background: 'linear-gradient(to right, #fecaca 0%, #ffffff 100%)' } : {}}
-                                className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all duration-200 select-none min-h-[110px] w-full text-left ${!isAvailable
-                                  ? 'opacity-40 bg-slate-100/70 border-slate-200 cursor-not-allowed shadow-none'
-                                  : isSelected
-                                    ? 'border-[#960c0c] text-[#960c0c] font-black shadow-none'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-[#960c0c]/50 hover:bg-slate-50/80 cursor-pointer shadow-none'
-                                  }`}
+                                onClick={handleNextWeek}
+                                className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-extrabold transition shadow-2xs cursor-pointer inline-flex items-center gap-1.5"
                               >
-                                {/* Day Short Name */}
-                                <span
-                                  className={`text-[10px] font-black uppercase tracking-wider ${!isAvailable
-                                    ? 'text-slate-300'
-                                    : isSelected
-                                      ? 'text-[#960c0c]'
-                                      : 'text-slate-400'
-                                    }`}
-                                >
-                                  {day.dayName}
-                                </span>
-
-                                {/* Date Display */}
-                                <span className={`text-xs font-bold my-0.5 ${!isAvailable ? 'text-slate-400' : isSelected ? 'text-[#960c0c]' : 'text-slate-800'}`}>
-                                  {day.formattedDisplay}
-                                </span>
-
-                                {/* Status Icon */}
-                                {isAvailable ? (
-                                  <FiCheckCircle className={`text-lg my-1 shrink-0 ${isSelected ? 'text-[#960c0c]' : 'text-emerald-500'}`} />
-                                ) : (
-                                  <FiXCircle className="text-rose-400 text-lg my-1 shrink-0" />
-                                )}
-
-                                {/* Status Label */}
-                                <span
-                                  className={`text-[9.5px] font-extrabold leading-tight text-center ${!isAvailable
-                                    ? 'text-slate-400'
-                                    : isSelected
-                                      ? 'text-[#960c0c]'
-                                      : 'text-emerald-600'
-                                    }`}
-                                >
-                                  {status}
-                                </span>
+                                <span>Check Next Week</span>
+                                <span>→</span>
                               </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                            {availableDays.map((day) => {
+                              const isSelected = bookingDate === day.dateStr;
+
+                              return (
+                                <button
+                                  key={day.dateStr}
+                                  type="button"
+                                  onClick={() => {
+                                    setBookingDate(day.dateStr);
+                                    setBookingSlotId('');
+                                    setSelectedMasterId(null);
+                                  }}
+                                  className={`flex flex-col items-center justify-between p-3.5 rounded-2xl border transition-all duration-200 select-none min-h-[90px] w-full cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-black ring-2 ring-emerald-500/20 shadow-xs'
+                                      : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-400 hover:bg-emerald-50/40'
+                                  }`}
+                                >
+                                  <span className={`text-[10px] font-black uppercase tracking-wider ${isSelected ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                    {day.dayName}
+                                  </span>
+
+                                  <span className={`text-xs font-extrabold my-0.5 ${isSelected ? 'text-emerald-950 font-black' : 'text-slate-800'}`}>
+                                    {day.formattedDisplay}
+                                  </span>
+
+                                  <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 text-[9.5px] font-black uppercase tracking-wider">
+                                    Available
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
 
                       {/* Selected Date Display Banner */}
                       {bookingDate && getDayStatus(bookingDate) === 'Available' && (

@@ -19,6 +19,7 @@ import AddDoctor from './pages/AddDoctor';
 import AllDoctors from './pages/AllDoctors';
 import ManageSlots from './pages/ManageSlots';
 import DoctorAvailability from './pages/DoctorAvailability';
+import ManageDoctorSlots from './pages/ManageDoctorSlots';
 
 function App() {
   return (
@@ -85,6 +86,7 @@ function App() {
         } />
         <Route path="availability" element={<DoctorAvailability />} />
         <Route path="availability/:doctorId" element={<DoctorAvailability />} />
+        <Route path="availability/:doctorId/slots" element={<ManageDoctorSlots />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
