@@ -7,6 +7,7 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuth } from '../context/AuthContext';
 
 const MySwal = withReactContent(Swal);
 
@@ -113,6 +114,8 @@ const getWeekDays = (mondayDate) => {
 };
 
 const Appointments = () => {
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
   const { toasts, removeToast, success } = useToast();
 
   // Core States
@@ -384,24 +387,72 @@ const Appointments = () => {
     }).sort((a, b) => a.master_start_time.localeCompare(b.master_start_time));
   }, [availableSlots]);
 
-  // Cancel Booking (changes status to 'cancelled')
-  const handleCancelBooking = async (id) => {
+  // Cancel Booking (requires cancellation reason/notes)
+  const handleCancelBooking = async (app) => {
+    const appointment = typeof app === 'object' ? app : appointments.find(a => a.id === app);
+    const appId = appointment?.id || app;
+    const patientName = appointment?.patient_name || 'Patient';
+
     const result = await MySwal.fire({
-      title: 'Cancel Appointment?',
-      text: 'Are you sure you want to cancel this appointment? The record will remain.',
-      icon: 'warning',
+      title: `<span class="text-[#960c0c] font-black tracking-tight">Cancel Appointment</span>`,
+      html: `
+        <div class="text-left space-y-4 font-sans text-xs">
+          <div class="bg-rose-50/70 border border-rose-100/80 p-3 rounded-2xl flex items-center justify-between">
+            <div>
+              <p class="text-[10px] text-rose-500 font-extrabold uppercase tracking-wider">Target Booking</p>
+              <p class="text-slate-800 font-bold text-sm">#${String(appId).padStart(4, '0')} - ${patientName}</p>
+            </div>
+            <span class="text-[10px] bg-rose-100 text-rose-700 font-black px-2.5 py-1 rounded-lg uppercase tracking-wide">Cancel Action</span>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-bold text-slate-700 mb-1">
+              Cancellation Remarks / Notes <span class="text-rose-500">*</span>
+            </label>
+            <textarea
+              id="swal-cancel-notes"
+              rows="3"
+              class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-2.5 outline-none focus:border-[#960c0c] focus:ring-1 focus:ring-[#960c0c] text-slate-700 font-medium placeholder:text-slate-400 transition resize-none"
+              placeholder="Enter remarks or reason for cancelling this appointment..."
+            ></textarea>
+          </div>
+        </div>
+      `,
       showCancelButton: true,
       confirmButtonColor: '#960c0c',
       cancelButtonColor: '#64748b',
-      confirmButtonText: 'Yes, cancel it!',
-      cancelButtonText: 'No, keep it'
+      confirmButtonText: 'Confirm Cancellation',
+      cancelButtonText: 'Keep Appointment',
+      customClass: {
+        popup: 'rounded-3xl border border-slate-200/50 shadow-2xl p-6 md:p-8',
+        confirmButton: 'px-5 py-2.5 rounded-xl text-xs font-bold transition duration-200 cursor-pointer',
+        cancelButton: 'px-5 py-2.5 rounded-xl text-xs font-bold transition duration-200 cursor-pointer'
+      },
+      didOpen: () => {
+        const notesInput = document.getElementById('swal-cancel-notes');
+        if (notesInput) notesInput.focus();
+      },
+      preConfirm: () => {
+        const notes = document.getElementById('swal-cancel-notes')?.value.trim();
+
+        if (!notes) {
+          MySwal.showValidationMessage('Please enter cancellation remarks.');
+          return false;
+        }
+
+        return notes;
+      }
     });
 
-    if (!result.isConfirmed) return;
+    if (!result.isConfirmed || !result.value) return;
+
+    const cancellationReason = result.value;
 
     try {
-      const res = await apiFetch(`/appointments/${id}/cancel`, {
+      const res = await apiFetch(`/appointments/${appId}/cancel`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cancellation_reason: cancellationReason })
       });
 
       if (res.ok) {
@@ -425,6 +476,7 @@ const Appointments = () => {
       });
     }
   };
+
 
   // Permanently Delete Appointment record
   const handleDeleteAppointment = async (id) => {
@@ -513,20 +565,38 @@ const Appointments = () => {
 
   // View Symptoms / Notes SweetAlert Popup
   const handleViewSymptoms = (app) => {
+    const isCancelled = app.status === 'cancelled' || Boolean(app.cancellation_reason);
+
     MySwal.fire({
-      title: `<span class="text-[#960c0c] font-black tracking-tight">Patient Symptoms & Notes</span>`,
+      title: `<span class="text-[#960c0c] font-black tracking-tight">Patient & Booking Notes</span>`,
       html: `
         <div class="text-left space-y-3 font-sans text-xs">
-          <div class="border-b border-dashed border-slate-200 pb-2 mb-2">
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Patient Name</p>
-            <p class="text-slate-800 font-bold">${app.patient_name}</p>
+          <div class="border-b border-dashed border-slate-200 pb-2 mb-2 flex items-center justify-between">
+            <div>
+              <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Patient Name</p>
+              <p class="text-slate-800 font-bold">${app.patient_name || 'N/A'}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Booking ID</p>
+              <p class="text-slate-800 font-bold">#${String(app.id).padStart(4, '0')}</p>
+            </div>
           </div>
           <div>
-            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Symptoms / Notes</p>
-            <p class="text-slate-750 bg-slate-50/50 border border-dashed border-slate-200 p-3.5 rounded-xl leading-relaxed whitespace-pre-wrap mt-1">
-              ${app.symptoms || '<em class="text-slate-400">No notes or symptoms provided.</em>'}
+            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Symptoms / Patient Notes</p>
+            <p class="text-slate-750 bg-slate-50/80 border border-dashed border-slate-200 p-3.5 rounded-xl leading-relaxed whitespace-pre-wrap mt-1">
+              ${app.symptoms || '<em class="text-slate-400">No initial symptoms or notes provided.</em>'}
             </p>
           </div>
+          ${isCancelled ? `
+            <div class="pt-2">
+              <p class="text-[10px] text-rose-500 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+                <span>Cancellation Reason & Remarks</span>
+              </p>
+              <p class="text-rose-900 bg-rose-50/80 border border-rose-200/70 p-3.5 rounded-xl leading-relaxed whitespace-pre-wrap font-medium">
+                ${app.cancellation_reason || '<em class="text-rose-400">No specific cancellation reason logged.</em>'}
+              </p>
+            </div>
+          ` : ''}
         </div>
       `,
       confirmButtonText: 'Close',
@@ -725,6 +795,7 @@ const Appointments = () => {
         cleanDocName,
         formattedDeptName,
         app.symptoms || '',
+        app.cancellation_reason || '',
         displayStatus
       ];
     });
@@ -732,7 +803,7 @@ const Appointments = () => {
 
   // Export filtered appointments to CSV (Excel compatible)
   const handleExportToExcel = (fileNameInput) => {
-    const headers = ['Booking ID', 'Patient Name', 'Patient Type', 'UHID', 'Email', 'Phone', 'Booking Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms / Notes', 'Status'];
+    const headers = ['Booking ID', 'Patient Name', 'Patient Type', 'UHID', 'Email', 'Phone', 'Booking Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms / Notes', 'Cancellation Reason', 'Status'];
     const rows = buildExportRows();
 
     const csvContent = [
@@ -780,7 +851,7 @@ const Appointments = () => {
     doc.text(`Generated: ${generatedAt}  |  Total Records: ${filteredAppointments.length}`, 297 - 14, 13, { align: 'right' });
 
     // Table
-    const headers = [['Booking ID', 'Patient Name', 'Type', 'UHID', 'Email', 'Phone', 'Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms / Notes', 'Status']];
+    const headers = [['Booking ID', 'Patient Name', 'Type', 'UHID', 'Email', 'Phone', 'Date', 'Time Slot', 'Doctor', 'Department', 'Symptoms', 'Cancellation Reason', 'Status']];
     const rows = buildExportRows();
 
     autoTable(doc, {
@@ -1041,23 +1112,23 @@ const Appointments = () => {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border border-slate-200 border-collapse">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-3xs bg-white">
+              <table className="w-full text-left text-xs border-collapse min-w-[1250px]">
                 <thead>
-                  <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-extrabold uppercase tracking-wider text-[9px]">
-                    <th className="py-3 px-4 text-center w-24 border-r border-slate-200">Booking ID</th>
-                    <th className="py-3 px-4 pl-5 border-r border-slate-200">Patient Name</th>
-                    <th className="py-3 px-4 border-r border-slate-200">Contact Info</th>
-                    <th className="py-3 px-4 border-r border-slate-200">Date</th>
-                    <th className="py-3 px-4 border-r border-slate-200">Time Slots</th>
-                    <th className="py-3 px-4 border-r border-slate-200">Doctor / Specialty</th>
-                    <th className="py-3 px-4 border-r border-slate-200 text-center">Status</th>
-                    <th className="py-3 px-4 text-center">Action</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase tracking-wider text-[9px]">
+                    <th className="py-3 px-4 text-center w-24 border-r border-slate-200 bg-slate-50">Booking ID</th>
+                    <th className="py-3 px-4 pl-5 border-r border-slate-200 bg-slate-50">Patient Name</th>
+                    <th className="py-3 px-4 border-r border-slate-200 bg-slate-50">Contact Info</th>
+                    <th className="py-3 px-4 border-r border-slate-200 bg-slate-50">Date</th>
+                    <th className="py-3 px-4 border-r border-slate-200 bg-slate-50">Time Slots</th>
+                    <th className="py-3 px-4 border-r border-slate-200 bg-slate-50">Doctor / Specialty</th>
+                    <th className="py-3 px-4 border-r border-slate-200 text-center bg-slate-50">Status</th>
+                    <th className="py-3 px-4 text-center bg-slate-50">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedAppointments.map((app, idx) => (
-                    <tr key={app.id} className="hover:bg-slate-50/40 transition-colors duration-150 border-b border-slate-200 text-slate-600 font-medium">
+                    <tr key={app.id} className="hover:bg-slate-50/50 transition-colors duration-150 border-b border-slate-200 text-slate-600 font-medium">
                       {/* Booking ID */}
                       <td className="py-3.5 px-4 text-center border-r border-slate-200 font-mono font-bold text-slate-600">
                         #{String(app.id).padStart(4, '0')}
@@ -1139,7 +1210,7 @@ const Appointments = () => {
                           ? 'bg-emerald-50 text-emerald-600 border border-emerald-100/10'
                           : app.status === 'completed'
                             ? 'bg-indigo-50 text-indigo-600 border border-indigo-100/10'
-                            : 'bg-slate-150 text-slate-450 border border-slate-200/50'
+                            : 'bg-rose-50 text-rose-600 border border-rose-100/40'
                           }`}>
                           {app.status === 'booked' ? 'Active' : app.status === 'completed' ? 'Completed' : 'Cancelled'}
                         </span>
@@ -1150,10 +1221,14 @@ const Appointments = () => {
                         <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                           <button
                             onClick={() => handleViewSymptoms(app)}
-                            className="text-indigo-650 hover:text-indigo-700 font-bold text-[10px] bg-indigo-50/50 hover:bg-indigo-50 px-2 py-1.5 rounded-lg border border-indigo-100/20 transition-all duration-200 inline-flex items-center gap-1 cursor-pointer"
-                            title="View Patient Symptoms & Notes"
+                            className={`font-bold text-[10px] px-2.5 py-1.5 rounded-lg border transition-all duration-200 inline-flex items-center gap-1 cursor-pointer ${
+                              app.status === 'cancelled'
+                                ? 'text-rose-700 bg-rose-50 hover:bg-rose-100/80 border-rose-200/80'
+                                : 'text-indigo-650 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-100/20'
+                            }`}
+                            title={app.status === 'cancelled' ? 'View Cancellation Remarks & Notes' : 'View Patient Symptoms & Notes'}
                           >
-                            <FiEye className="text-xs shrink-0" /> View Notes
+                            <FiEye className="text-xs shrink-0" /> {app.status === 'cancelled' ? 'View Remarks' : 'View Notes'}
                           </button>
                           {app.status === 'booked' && (
                             <>
@@ -1165,9 +1240,9 @@ const Appointments = () => {
                                 <FiCheckCircle className="text-xs shrink-0" /> Complete
                               </button>
                               <button
-                                onClick={() => handleCancelBooking(app.id)}
+                                onClick={() => handleCancelBooking(app)}
                                 className="text-amber-600 hover:text-amber-700 font-bold text-[10px] bg-amber-50/50 hover:bg-amber-50 px-2 py-1.5 rounded-lg border border-amber-100/20 transition-all duration-200 inline-flex items-center gap-1 cursor-pointer"
-                                title="Cancel appointment (keeps record)"
+                                title="Cancel appointment (requires reason notes)"
                               >
                                 <FiXCircle className="text-xs shrink-0" /> Cancel
                               </button>
@@ -1182,17 +1257,16 @@ const Appointments = () => {
                               Re-activate
                             </button>
                           )}
-                          {app.status === 'cancelled' && (
-                            <span className="text-slate-400 text-[10px] italic">Cancelled</span>
+                          {/* Delete — visible only for admin role */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteAppointment(app.id)}
+                              className="text-rose-600 hover:text-rose-700 font-bold text-[10px] bg-rose-50/40 hover:bg-rose-50 px-2 py-1.5 rounded-lg border border-rose-100/20 transition-all duration-200 inline-flex items-center gap-1 cursor-pointer"
+                              title="Permanently delete this record (Admin only)"
+                            >
+                              <FiTrash2 className="text-xs shrink-0" /> Delete
+                            </button>
                           )}
-                          {/* Delete — always visible for all statuses */}
-                          <button
-                            onClick={() => handleDeleteAppointment(app.id)}
-                            className="text-rose-600 hover:text-rose-700 font-bold text-[10px] bg-rose-50/40 hover:bg-rose-50 px-2 py-1.5 rounded-lg border border-rose-100/20 transition-all duration-200 inline-flex items-center gap-1 cursor-pointer"
-                            title="Permanently delete this record"
-                          >
-                            <FiTrash2 className="text-xs shrink-0" /> Delete
-                          </button>
                         </div>
                       </td>
                     </tr>
